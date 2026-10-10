@@ -1,7 +1,7 @@
 // Marco comun de todas las pantallas: header (logo, navegacion, saldo y
 // usuario) y debajo el contenido de la ruta actual.
 
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth, type Rol } from "../auth/AuthContext";
 import estilos from "./Layout.module.css";
 
@@ -30,6 +30,13 @@ function iniciales(nombre: string): string {
 
 export default function Layout() {
   const { usuario, cerrarSesion, avisoAcceso, descartarAviso } = useAuth();
+  const navegar = useNavigate();
+
+  // HU-02: cerrar sesion borra la cookie y vuelve a la pantalla de ingreso.
+  async function salir() {
+    await cerrarSesion();
+    navegar("/login", { replace: true });
+  }
   const enlaces = usuario ? ENLACES.filter((e) => e.roles.includes(usuario.rol)) : [];
 
   return (
@@ -73,7 +80,7 @@ export default function Layout() {
               <span className={estilos.avatar} title={usuario.nombre}>
                 {iniciales(usuario.nombre)}
               </span>
-              <button type="button" className={estilos.salir} onClick={cerrarSesion}>
+              <button type="button" className={estilos.salir} onClick={salir}>
                 Salir
               </button>
             </>

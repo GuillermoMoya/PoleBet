@@ -8,7 +8,7 @@ Capa de presentación. No sabe de dónde vienen los datos: solo habla con Pagos 
 index.html
 vite.config.ts            # proxy de desarrollo y configuración de Vitest
 scripts/mock-ws.mjs       # motor de mentira para desarrollar sin el motor de Go
-scripts/dev-jwt.mjs       # firma un JWT de desarrollo (mientras no hay login)
+scripts/dev-jwt.mjs       # firma un JWT de desarrollo (pruebas manuales contra el motor)
 src/
   main.tsx                # proveedores: router, sesión y WebSocket
   App.tsx                 # rutas
@@ -19,7 +19,9 @@ src/
   api/ws.ts               # cliente WebSocket con reconexión
   api/WsContexto.tsx      # una sola conexión para toda la app: useWs()
   api/tipos.ts            # tipos de mensajes y respuestas
-  auth/AuthContext.tsx    # sesión: useAuth() (simulada hasta HU-02)
+  auth/AuthContext.tsx    # sesión: useAuth() (HU-02, login real contra Pagos)
+  auth/api.ts             # llamadas /auth/login, /auth/logout, /auth/me
+  auth/destino.ts         # a dónde ir después del login según el rol
   auth/RutaProtegida.tsx  # protege rutas por sesión y rol
   componentes/            # Layout (header) y Pendiente (placeholder)
   paginas/                # una pantalla por ruta
@@ -92,15 +94,33 @@ Opcionales. Copia `.env.example` a `.env` dentro de `services/front/` para cambi
 | `VITE_MOTOR_URL` | `/api/motor` (proxy) | URL REST del motor |
 | `VITE_MOTOR_WS_URL` | mismo origen | URL WebSocket del motor, sin `/ws` |
 | `VITE_SHOW_LATENCY` | `false` | `true` muestra la latencia en `/carrera` |
-| `VITE_ROL_SIMULADO` | `player` | Sesión simulada al arrancar: `player`, `admin` o `ninguno` |
+| `VITE_ROL_SIMULADO` | sin definir (login real) | Solo desarrollo sin Pagos: `player` o `admin` arrancan con un usuario de mentira |
 
 Solo para el servidor de desarrollo: `PROXY_MOTOR` y `PROXY_PAGOS` cambian a dónde reenvía el proxy.
 
-## Sesión (simulada por ahora)
+## Sesión (HU-02)
 
-Mientras no exista el login (HU-02), `AuthContext` arranca con un usuario de mentira según `VITE_ROL_SIMULADO`, y `/login` tiene dos botones para entrar como jugador o como admin. Quien implemente HU-02 solo cambia `auth/AuthContext.tsx`: el resto de la app usa `useAuth()`.
+El login es real contra Pagos. El JWT vive en una cookie `HttpOnly` que JavaScript **no puede leer**; el navegador la envía sola en cada petición (`credentials: "include"`) a Pagos y al motor, también al abrir el WebSocket.
 
-El usuario simulado no tiene cookie, así que el motor real rechaza su WebSocket. Para probar contra el motor real, firma un token:
+| Momento | Qué pasa |
+| --- | --- |
+| Carga la app | `GET /auth/me`. Mientras responde, `cargando` es `true` y las rutas protegidas esperan (recargar no saca al usuario) |
+| `/login` | `iniciarSesion(email, password)` → `POST /auth/login`. Un 401 muestra «Correo o contraseña incorrectos» |
+| Botón Salir | `cerrarSesion()` → `POST /auth/logout` y vuelve a `/login` (limpia el front aunque Pagos no responda) |
+| Cualquier 401 | `http.ts` avisa y la sesión se limpia; `RutaProtegida` lleva a `/login` |
+
+```tsx
+const { usuario, cargando, iniciarSesion, cerrarSesion } = useAuth();
+// usuario: { id, nombre, email, rol: "player" | "admin" } | null
+```
+
+Para probar a mano hace falta un usuario en la BD. Mientras no existan el registro (HU-01) ni el admin automático (HU-12), créalo con la herramienta de desarrollo de Pagos:
+
+```bash
+docker compose exec pagos python -m app.cli crear-usuario --email ana@arqui.local --nombre "Ana Pérez" --password clave123
+```
+
+**Desarrollo sin Pagos** (`npm run dev:mock`): define `VITE_ROL_SIMULADO=player` (o `admin`) en `services/front/.env` y la app arranca con un usuario de mentira sin llamar a `/auth/me`. Ese usuario no tiene cookie, así que el motor real rechaza su WebSocket; para probar contra el motor real, firma un token:
 
 ```bash
 npm run jwt                    # jugador, 120 minutos

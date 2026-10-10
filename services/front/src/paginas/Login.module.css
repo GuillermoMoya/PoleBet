@@ -1,0 +1,73 @@
+/* Pantalla /login (HU-02). Usa solo las variables de estilos/tokens.css. */
+
+.contenedor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.contenedor p {
+  margin: 0;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.campo input {
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.campo input:focus-visible {
+  border-color: var(--accent-text);
+}
+
+.campo input[aria-invalid="true"] {
+  border-color: var(--accent-border);
+}
+
+.campo input:disabled {
+  opacity: 0.6;
+}
+
+/* Mensaje bajo un campo ("Escribe tu correo.") */
+.errorCampo {
+  color: var(--accent-text);
+  font-size: 13px;
+}
+
+/* Mensaje general ("Correo o contraseña incorrectos") */
+.error {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-surface);
+  color: var(--text);
+}
+
+.formulario button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}

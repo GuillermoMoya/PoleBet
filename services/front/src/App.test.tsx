@@ -32,13 +32,18 @@ beforeEach(() => {
 });
 
 describe("rutas", () => {
-  it.each([
-    ["/registro", "Crear cuenta", "Pendiente: HU-01"],
-    ["/login", "Iniciar sesión", "Pendiente: HU-02"],
-  ])("%s es publica y muestra su placeholder", (ruta, titulo, pendiente) => {
-    abrir(ruta, null);
-    expect(screen.getByRole("heading", { name: titulo })).toBeInTheDocument();
-    expect(screen.getByText(pendiente)).toBeInTheDocument();
+  it("/registro es publica y muestra su placeholder", () => {
+    abrir("/registro", null);
+    expect(screen.getByRole("heading", { name: "Crear cuenta" })).toBeInTheDocument();
+    expect(screen.getByText("Pendiente: HU-01")).toBeInTheDocument();
+  });
+
+  // HU-02: /login ya no es un placeholder (ver auth/sesion.test.tsx).
+  it("/login es publica y muestra el formulario", () => {
+    abrir("/login", null);
+    expect(screen.getByRole("heading", { name: "Iniciar sesión" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Correo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Contraseña")).toBeInTheDocument();
   });
 
   it("sin sesion, una ruta protegida lleva a /login", () => {
