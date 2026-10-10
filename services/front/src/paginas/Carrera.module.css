@@ -1,0 +1,65 @@
+/* Cabecera de la carrera */
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 20px;
+  padding: 20px 24px;
+}
+
+.cabeceraTitulo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+/* Etiqueta gris cuando no hay datos en vivo */
+.etiquetaApagada {
+  background: var(--border-strong);
+}
+
+.puntoVivo {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Indicador de latencia para la demo de RNF-04 */
+.latencia {
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.latencia b {
+  color: var(--text);
+}
+
+/* Dos columnas que se apilan en celular */
+.columnas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--gap);
+}
+
+.lateral {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+
+.centro {
+  display: flex;
+  flex: 2 1 480px;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}

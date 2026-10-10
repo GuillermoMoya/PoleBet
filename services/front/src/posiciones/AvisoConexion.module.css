@@ -1,0 +1,37 @@
+.aviso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+/* Punto que parpadea mientras no hay conexion */
+.punto {
+  display: block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: parpadeo 1s ease-in-out infinite alternate;
+}
+
+@keyframes parpadeo {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .punto {
+    animation: none;
+  }
+}

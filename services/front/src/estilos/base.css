@@ -1,0 +1,130 @@
+/* Estilos globales minimos y clases compartidas por todas las pantallas. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+a {
+  color: var(--accent-text);
+}
+
+a:hover {
+  color: #ff6b61;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* Tarjeta oscura: el contenedor basico de cada bloque de una pantalla. */
+.tarjeta {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+/* Tarjeta clara. Dentro de ella el texto es oscuro; sirve tambien para
+   alojar contenido que todavia no usa el tema oscuro. */
+.tarjeta-clara {
+  background: var(--light-surface);
+  color: var(--light-text);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+/* Titulo de seccion dentro de una tarjeta ("POSICIONES"). */
+.titulo-seccion {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 22px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Titulo grande de pantalla, en italica condensada. */
+.titulo-pagina {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: clamp(30px, 6vw, 42px);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.texto-secundario {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Boton principal (rojo) y secundario (borde). */
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 1px;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.boton:hover {
+  color: #fff;
+  filter: brightness(1.1);
+}
+
+.boton-secundario {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* Etiqueta inclinada tipo "EN VIVO". */
+.etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transform: skewX(-12deg);
+}
+
+/* Solo para lectores de pantalla. */
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

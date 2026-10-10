@@ -49,8 +49,9 @@ Cuando todos los servicios estén arriba, abre el front en el navegador:
 - API Motor (REST): http://localhost:8080/health
 - WebSocket Motor: ws://localhost:8080/ws
 
-La pantalla inicial del front muestra el estado de los dos backends y de la
-conexión WebSocket, lo que confirma que los tres componentes se comunican.
+La pantalla http://localhost:5173/estado muestra el estado de los dos backends
+y de la conexión WebSocket, lo que confirma que los tres componentes se
+comunican. Las rutas y el desarrollo del front están en `services/front/README.md`.
 
 Para detener y limpiar:
 
