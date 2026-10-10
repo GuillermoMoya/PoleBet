@@ -10,6 +10,7 @@ Estructura:
     ├── main.py        # crea la app (este archivo)
     ├── core/config.py # variables de entorno
     ├── core/security.py # hash de contrasenas y JWT (contrato con el motor)
+    ├── core/session.py  # cookie de sesion (HU-02)
     ├── db.py          # engine, sesiones, espera e inicializacion de la BD
     ├── deps.py        # dependencias: DbSession, CurrentUser, AdminUser
     ├── models.py      # tablas (ver documentation/modelo-datos-pagos.pdf)
