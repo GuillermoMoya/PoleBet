@@ -1,16 +1,20 @@
-"""Pruebas de HU-02: login, logout y /auth/me.
+"""Pruebas de autenticacion (HU-01 registro, HU-02 login/logout/me).
 
 Cada prueba corresponde a un criterio de aceptacion de la historia o a un
 punto del contrato con el motor (services/motor/internal/auth/contrato.go).
 """
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
+import pytest
 from fastapi import APIRouter
+from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, verify_password
 from app.deps import PlayerUser
+from app.models import ROLE_PLAYER, User
 from tests.conftest import requires_db
 
 CLAVE = "clave123"  # la que usa el fixture make_user
@@ -20,6 +24,21 @@ MENSAJE = "Correo o contraseña incorrectos"
 def _login(client, email, password=CLAVE):
     return client.post("/auth/login", json={"email": email, "password": password})
 
+
+def _payload(**overrides):
+    """Datos para POST /auth/register. El correo es unico por defecto."""
+    base = {
+        "name": "Ivan Test",
+        "email": f"ivan-{uuid.uuid4().hex[:8]}@example.com",
+        "password": "clave-segura-123",
+    }
+    base.update(overrides)
+    return base
+
+
+# ===========================================================================
+# HU-02: login, logout, /auth/me
+# ===========================================================================
 
 # ---------------------------------------------------------------------------
 # Criterio: credenciales correctas -> JWT en cookie HttpOnly
@@ -185,3 +204,105 @@ def test_cli_crea_un_usuario_que_puede_iniciar_sesion(client, capsys):
         with SessionLocal() as db:
             db.query(User).filter(User.email == correo.lower()).delete()
             db.commit()
+
+
+# ===========================================================================
+# HU-01: registro
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Caso feliz
+# ---------------------------------------------------------------------------
+@requires_db
+def test_registro_exitoso(client):
+    """HU-01: crea usuario con rol player, saldo 0 y password hasheado."""
+    from app.db import SessionLocal
+
+    payload = _payload()
+    response = client.post("/auth/register", json=payload)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["email"] == payload["email"]
+    assert body["nombre"] == payload["name"]
+    assert body["rol"] == ROLE_PLAYER
+    assert "id" in body
+    assert "password" not in body
+    assert "password_hash" not in body
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == payload["email"]))
+        assert user is not None
+        assert user.password_hash != payload["password"]
+        assert verify_password(payload["password"], user.password_hash)
+        assert user.balance == 0
+        assert user.role == ROLE_PLAYER
+
+        db.delete(user)
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Correo repetido
+# ---------------------------------------------------------------------------
+@requires_db
+def test_registro_correo_repetido_devuelve_409(client):
+    """HU-01: correo repetido -> 409 y mensaje exacto."""
+    from app.db import SessionLocal
+
+    payload = _payload()
+    r1 = client.post("/auth/register", json=payload)
+    assert r1.status_code == 201
+
+    r2 = client.post("/auth/register", json=payload)
+    assert r2.status_code == 409
+    assert r2.json()["detail"] == "Este correo ya está registrado"
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == payload["email"]))
+        if user:
+            db.delete(user)
+            db.commit()
+
+
+@requires_db
+def test_registro_correo_duplicado_por_mayusculas(client):
+    """HU-01: "Ana@x.com" y "ana@x.com" son la misma cuenta (409)."""
+    from app.db import SessionLocal
+
+    base = _payload()
+    email_upper = base["email"].upper()
+    email_lower = base["email"].lower()
+
+    r1 = client.post("/auth/register", json={**base, "email": email_upper})
+    assert r1.status_code == 201
+
+    r2 = client.post("/auth/register", json={**base, "email": email_lower})
+    assert r2.status_code == 409
+    assert r2.json()["detail"] == "Este correo ya está registrado"
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email_lower))
+        if user:
+            db.delete(user)
+            db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Datos invalidos
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "override, motivo",
+    [
+        ({"email": "no-es-correo"}, "correo invalido"),
+        ({"email": ""}, "correo vacio"),
+        ({"name": ""}, "nombre vacio"),
+        ({"password": "corta"}, "password muy corta"),
+        ({"password": ""}, "password vacia"),
+    ],
+)
+@requires_db
+def test_registro_datos_invalidos_devuelven_422(client, override, motivo):
+    """HU-01: campo vacio o correo invalido -> 422."""
+    response = client.post("/auth/register", json=_payload(**override))
+    assert response.status_code == 422, f"fallo: {motivo}"

@@ -1,8 +1,9 @@
-"""Endpoints de sesion: login, logout y "quien soy" (HU-02, RF-02, RNF-06).
+"""Endpoints de autenticacion.
 
-    POST /auth/login   correo + contraseña -> cookie de sesion con el JWT
-    POST /auth/logout  borra la cookie (siempre responde 204)
-    GET  /auth/me      usuario de la cookie, o 401 si no hay sesion valida
+    POST /auth/register  registro de jugador (HU-01)
+    POST /auth/login     correo + contrasena -> cookie de sesion con el JWT (HU-02)
+    POST /auth/logout    borra la cookie (siempre responde 204) (HU-02)
+    GET  /auth/me        usuario de la cookie, o 401 si no hay sesion valida (HU-02)
 
 El JWT nunca viaja en el cuerpo de la respuesta: solo en la cookie HttpOnly.
 El front no lo ve ni lo necesita; el navegador lo envia solo (credentials).
@@ -14,8 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.core.security import create_access_token
 from app.core.session import borrar_cookie_sesion, poner_cookie_sesion
 from app.deps import CurrentUser, DbSession
-from app.schemas.auth import LoginIn, UsuarioOut
-from app.services.auth import ProveedorIdentidad, get_proveedor_identidad
+from app.schemas.auth import LoginIn, RegisterRequest, UsuarioOut
+from app.services.auth import (
+    ProveedorIdentidad,
+    get_proveedor_identidad,
+    registrar_usuario,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,6 +34,30 @@ def _sin_cache(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
+# ---------------------------------------------------------------------------
+# HU-01: registro
+# ---------------------------------------------------------------------------
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    response_model=UsuarioOut,
+    summary="Registrar un jugador (HU-01)",
+)
+def register(data: RegisterRequest, db: DbSession) -> UsuarioOut:
+    """Crea un jugador con rol 'player' y saldo 0.
+
+    - 201: devuelve el usuario creado (sin contrasena).
+    - 409: si el correo ya esta registrado (comparacion case-insensitive).
+    - 422: si algun campo es invalido (nombre vacio, correo mal formado,
+      contrasena demasiado corta).
+    """
+    user = registrar_usuario(db, data)
+    return UsuarioOut.desde_modelo(user)
+
+
+# ---------------------------------------------------------------------------
+# HU-02: login, logout, me
+# ---------------------------------------------------------------------------
 @router.post(
     "/login",
     response_model=UsuarioOut,

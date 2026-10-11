@@ -1,4 +1,4 @@
-"""Logica de autenticacion (HU-02).
+"""Logica de autenticacion (HU-01, HU-02).
 
 El documento del prototipo pide dejar el login "detras de una interfaz de
 autenticacion para migrar despues a OAuth sin tocar el resto del sistema".
@@ -12,13 +12,19 @@ emitiendo su propio JWT (core/security.py) y el motor lo sigue validando igual.
 from functools import lru_cache
 from typing import Protocol
 
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
-from app.models import User
+from app.models import ROLE_PLAYER, User
+from app.schemas.auth import RegisterRequest
 
 
+# ---------------------------------------------------------------------------
+# Utilidades compartidas
+# ---------------------------------------------------------------------------
 def normalizar_email(email: str) -> str:
     """Forma canonica del correo: sin espacios y en minusculas.
 
@@ -28,6 +34,9 @@ def normalizar_email(email: str) -> str:
     return email.strip().lower()
 
 
+# ---------------------------------------------------------------------------
+# HU-02: login (proveedor de identidad)
+# ---------------------------------------------------------------------------
 class ProveedorIdentidad(Protocol):
     """Interfaz de autenticacion: dice QUIEN es el usuario, nada mas."""
 
@@ -70,3 +79,56 @@ def get_proveedor_identidad() -> ProveedorIdentidad:
     En las pruebas se puede reemplazar con app.dependency_overrides.
     """
     return ProveedorLocal()
+
+
+# ---------------------------------------------------------------------------
+# HU-01: registro
+# ---------------------------------------------------------------------------
+def registrar_usuario(db: Session, data: RegisterRequest) -> User:
+    """Crea un usuario nuevo con rol player y saldo 0.
+
+    Cumple HU-01:
+      - Correo unico case-insensitive: "Ana@x.com" y "ana@x.com" son la misma
+        cuenta. Se normaliza antes de buscar y antes de guardar.
+      - Contrasena hasheada con bcrypt (RNF-06), nunca en texto plano.
+      - Rol por defecto "player".
+      - Saldo inicial 0.
+      - Si dos peticiones llegan con el mismo correo a la vez, la segunda
+        recibe 409 en lugar de un 500.
+    """
+    email = normalizar_email(data.email)
+
+    # 1. Chequeo rapido para dar 409 en el caso normal. NO es la unica defensa:
+    #    dos peticiones simultaneas pueden pasar este select a la vez y solo
+    #    una ganara el commit (ver el try/except de abajo).
+    existente = db.scalar(select(User).where(User.email == email))
+    if existente is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Este correo ya está registrado",
+        )
+
+    # 2. Hash de la contrasena (RNF-06).
+    password_hash = hash_password(data.password)
+
+    # 3. Crear el usuario con rol player y saldo 0.
+    user = User(
+        email=email,
+        name=data.name,
+        password_hash=password_hash,
+        role=ROLE_PLAYER,
+        balance=0,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Otra peticion gano la carrera por el mismo correo: el UNIQUE de
+        # Postgres salta y aqui lo convertimos en el mismo 409 que arriba.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Este correo ya está registrado",
+        )
+    db.refresh(user)
+    return user
