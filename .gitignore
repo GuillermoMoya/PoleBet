@@ -35,3 +35,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+
+# Contexto local de agentes; no versionar
+/Contexto_Para_Agentes/Contexto_Para_Agentes/
