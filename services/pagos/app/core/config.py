@@ -44,9 +44,24 @@ class Settings(BaseSettings):
     cop_per_token: float = 1000.0
 
     # ---- Admin inicial (RF-13 / HU-12) ----
-    admin_email: str = "admin@arqui.local"
-    admin_password: str = "admin1234"
+    admin_email: str
+    admin_password: str
     admin_name: str = "Administrador"
+
+    @field_validator("admin_email")
+    @classmethod
+    def _admin_email_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("ADMIN_EMAIL no puede estar vacío")
+        return value
+
+    @field_validator("admin_password")
+    @classmethod
+    def _admin_password_required(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("ADMIN_PASSWORD no puede estar vacío")
+        return value
 
     @field_validator("allowed_origins", mode="before")
     @classmethod

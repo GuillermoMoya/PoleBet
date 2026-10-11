@@ -18,6 +18,8 @@ os.environ.setdefault("JWT_SECRET", "secreto-de-pruebas")
 os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("DB_CONNECT_RETRIES", "1")
 os.environ.setdefault("DB_CONNECT_RETRY_SECONDS", "0")
+os.environ["ADMIN_EMAIL"] = f"admin-bootstrap-test-{uuid.uuid4().hex}@arqui.local"
+os.environ["ADMIN_PASSWORD"] = "contrasena-de-pruebas"
 
 from app.db import ping_db  # noqa: E402
 
@@ -28,11 +30,25 @@ requires_db = pytest.mark.skipif(not DB_AVAILABLE, reason="PostgreSQL no disponi
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient
+    from sqlalchemy import delete
 
+    from app.core.config import settings
+    from app.db import SessionLocal
     from app.main import app
+    from app.models import ROLE_ADMIN, User
 
-    with TestClient(app) as c:  # "with" ejecuta el lifespan (crea tablas)
-        yield c
+    try:
+        with TestClient(app) as c:  # "with" ejecuta el lifespan (crea tablas)
+            yield c
+    finally:
+        with SessionLocal() as db:
+            db.execute(
+                delete(User).where(
+                    User.email == settings.admin_email,
+                    User.role == ROLE_ADMIN,
+                )
+            )
+            db.commit()
 
 
 @pytest.fixture
