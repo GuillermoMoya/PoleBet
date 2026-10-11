@@ -39,6 +39,7 @@ Un solo comando desde la raíz del repositorio:
 
 ```bash
 cp .env.example .env     # solo la primera vez
+# Edita .env y define ADMIN_EMAIL y ADMIN_PASSWORD antes de continuar.
 docker compose up --build
 ```
 

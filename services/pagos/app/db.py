@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,  # descarta conexiones muertas antes de usarlas
+    hide_parameters=True,
     pool_size=10,
     max_overflow=20,  # varios usuarios a la vez en la demo
 )
