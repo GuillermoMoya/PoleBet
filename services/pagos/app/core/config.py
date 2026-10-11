@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # ---- Servicio ----
     app_name: str = "Pagos y usuarios"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
 
     # ---- PostgreSQL ----
     # Mismo nombre de BD que .env.example para que funcione igual fuera de Docker.

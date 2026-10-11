@@ -1,0 +1,44 @@
+/* Paleta, tipografia y medidas de PoleBet, tomadas de los mockups del equipo.
+   Todo estilo nuevo debe usar estas variables en vez de valores sueltos. */
+:root {
+  /* Colores */
+  --bg: #0b0b0d; /* fondo */
+  --surface: #15151a; /* tarjetas */
+  --surface-2: #111115; /* controles dentro de una tarjeta */
+  --border: #23232a;
+  --border-strong: #3a3a42;
+  --row-border: #202026; /* separador entre filas de una lista */
+  --text: #f5f5f7;
+  --text-muted: #a1a1aa;
+  --accent: #e10600; /* rojo de marca, botones principales, "en vivo" */
+  --accent-text: #ff3b30; /* rojo para texto sobre fondo oscuro */
+  --accent-surface: #1c0f10; /* fondo de un elemento resaltado */
+  --accent-border: #6b1d19;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+
+  /* Tarjeta clara (como "Tu jugada" en el mockup) */
+  --light-surface: #f5f5f7;
+  --light-text: #0b0b0d;
+  --light-muted: #52525b;
+
+  /* Tipografia */
+  --font-body: "Barlow", system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+
+  /* Medidas */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --tap: 44px; /* alto minimo de botones y enlaces tactiles */
+  --gap: 24px;
+  --page-pad: 40px;
+  --page-max: 1360px;
+}
+
+/* En celular se reduce el margen lateral. */
+@media (max-width: 640px) {
+  :root {
+    --gap: 16px;
+    --page-pad: 16px;
+  }
+}

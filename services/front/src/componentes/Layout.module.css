@@ -1,0 +1,179 @@
+.app {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* Header: se parte en dos filas cuando no cabe (celular). */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding: 14px var(--page-pad);
+  border-bottom: 1px solid var(--border);
+}
+
+.izquierda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 40px;
+}
+
+.derecha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--tap);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.logo:hover {
+  color: var(--text);
+}
+
+.logoBarra {
+  display: block;
+  width: 30px;
+  height: 16px;
+  background: var(--accent);
+  transform: skewX(-24deg);
+}
+
+.logoTexto {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 32px;
+  letter-spacing: 1px;
+}
+
+.logoAcento {
+  color: var(--accent-text);
+}
+
+/* Navegacion */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+}
+
+.enlace {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.enlace:hover {
+  color: var(--text);
+}
+
+.enlaceActivo {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+/* Pildora del saldo */
+.saldo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 0 16px;
+  border: 1px solid #2a2a31;
+  border-radius: 999px;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.saldo:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.saldoRombo {
+  display: block;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  transform: rotate(45deg);
+}
+
+/* Circulo con las iniciales del usuario */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+  background: var(--border);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.salir {
+  min-height: var(--tap);
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.salir:hover {
+  color: var(--text);
+}
+
+/* Aviso de acceso denegado */
+.aviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px var(--page-pad);
+  background: var(--accent-surface);
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.avisoCerrar {
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Contenido de la pantalla */
+.contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 24px var(--page-pad) 56px;
+}
