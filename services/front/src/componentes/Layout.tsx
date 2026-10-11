@@ -3,7 +3,10 @@
 
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth, type Rol } from "../auth/AuthContext";
+import { useBilletera } from "../billetera/BilleteraContexto";
 import estilos from "./Layout.module.css";
+
+const numero = new Intl.NumberFormat("es-CO");
 
 interface Enlace {
   a: string;
@@ -30,6 +33,7 @@ function iniciales(nombre: string): string {
 
 export default function Layout() {
   const { usuario, cerrarSesion, avisoAcceso, descartarAviso } = useAuth();
+  const { saldo } = useBilletera();
   const navegar = useNavigate();
 
   // HU-02: cerrar sesion borra la cookie y vuelve a la pantalla de ingreso.
@@ -72,9 +76,10 @@ export default function Layout() {
           {usuario ? (
             <>
               {usuario.rol === "player" && (
-                // PENDIENTE HU-03: mostrar el saldo real de la billetera.
-                <Link to="/billetera" className={estilos.saldo} title="Saldo pendiente: HU-03">
-                  <span className={estilos.saldoRombo} aria-hidden="true" />— tokens
+                // HU-03: saldo real; se actualiza solo al comprar tokens.
+                <Link to="/billetera" className={estilos.saldo} aria-label={`Saldo: ${saldo === null ? "sin cargar" : `${numero.format(saldo)} PBT`}`}>
+                  <span className={estilos.saldoRombo} aria-hidden="true" />
+                  {saldo === null ? "—" : numero.format(saldo)} PBT
                 </Link>
               )}
               <span className={estilos.avatar} title={usuario.nombre}>

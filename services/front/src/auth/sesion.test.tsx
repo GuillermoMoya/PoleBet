@@ -129,7 +129,7 @@ describe("HU-02 · sesion existente y vencida", () => {
     abrir("/billetera");
 
     expect(screen.getByRole("status")).toHaveTextContent("Cargando"); // no redirige mientras pregunta
-    expect(await screen.findByText("Pendiente: HU-03")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Billetera" })).toBeInTheDocument();
   });
 
   it("sin sesion (401), una ruta protegida lleva al login", async () => {
@@ -151,7 +151,7 @@ describe("HU-02 · cerrar sesion", () => {
   it("borra la cookie en Pagos y vuelve a la pantalla de ingreso", async () => {
     pagos({ "GET /auth/me": { status: 200, body: JUGADOR }, "POST /auth/logout": { status: 204 } });
     abrir("/billetera");
-    await screen.findByText("Pendiente: HU-03");
+    await screen.findByRole("heading", { name: "Billetera" });
 
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
 
@@ -162,7 +162,7 @@ describe("HU-02 · cerrar sesion", () => {
   it("si Pagos no responde al salir, igual cierra la sesion en el front", async () => {
     pagos({ "GET /auth/me": { status: 200, body: JUGADOR }, "POST /auth/logout": new TypeError("Failed to fetch") });
     abrir("/billetera");
-    await screen.findByText("Pendiente: HU-03");
+    await screen.findByRole("heading", { name: "Billetera" });
 
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
 

@@ -11,6 +11,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import RutaProtegida from "./auth/RutaProtegida";
+import { BilleteraProvider } from "./billetera/BilleteraContexto";
 import Layout from "./componentes/Layout";
 import Admin from "./paginas/Admin";
 import Billetera from "./paginas/Billetera";
@@ -29,29 +30,33 @@ function Inicio() {
 }
 
 export default function App() {
+  // BilleteraProvider va aqui (y no en main.tsx) porque lo usan el header y
+  // /billetera; asi cualquier montaje de <App /> lo trae, tambien en las pruebas.
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Inicio />} />
+    <BilleteraProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Inicio />} />
 
-        {/* Publicas */}
-        <Route path="/registro" element={<Registro />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/estado" element={<Estado />} />
+          {/* Publicas */}
+          <Route path="/registro" element={<Registro />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/estado" element={<Estado />} />
 
-        {/* Solo jugador */}
-        <Route element={<RutaProtegida roles={["player"]} />}>
-          <Route path="/carrera" element={<Carrera />} />
-          <Route path="/billetera" element={<Billetera />} />
+          {/* Solo jugador */}
+          <Route element={<RutaProtegida roles={["player"]} />}>
+            <Route path="/carrera" element={<Carrera />} />
+            <Route path="/billetera" element={<Billetera />} />
+          </Route>
+
+          {/* Solo admin */}
+          <Route element={<RutaProtegida roles={["admin"]} />}>
+            <Route path="/admin" element={<Admin />} />
+          </Route>
+
+          <Route path="*" element={<NoEncontrada />} />
         </Route>
-
-        {/* Solo admin */}
-        <Route element={<RutaProtegida roles={["admin"]} />}>
-          <Route path="/admin" element={<Admin />} />
-        </Route>
-
-        <Route path="*" element={<NoEncontrada />} />
-      </Route>
-    </Routes>
+      </Routes>
+    </BilleteraProvider>
   );
 }

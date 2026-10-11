@@ -59,7 +59,14 @@ def make_user():
 
     yield _make
 
+    from sqlalchemy import delete
+
+    from app.models import LedgerEntry
+
     with SessionLocal() as db:
+        # Primero sus movimientos del ledger (HU-03): tienen FK al usuario.
+        if created:
+            db.execute(delete(LedgerEntry).where(LedgerEntry.user_id.in_(created)))
         for uid in created:
             obj = db.get(User, uid)
             if obj:

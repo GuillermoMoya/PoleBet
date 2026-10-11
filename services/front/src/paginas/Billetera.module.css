@@ -1,0 +1,241 @@
+/* Pantalla /billetera (HU-03). Usa solo las variables de estilos/tokens.css. */
+
+.pagina {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.pagina p {
+  margin: 0;
+}
+
+/* Saldo disponible */
+.saldo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 28px 44px;
+}
+
+@media (max-width: 640px) {
+  .saldo {
+    padding: 20px;
+  }
+}
+
+.etiquetaSaldo {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.cifra {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: clamp(56px, 12vw, 88px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.moneda {
+  color: var(--accent-text);
+  font-size: 0.45em;
+}
+
+/* Tarjeta Consignar */
+.consignar {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto; /* centrada horizontalmente */
+  padding: 28px 32px;
+  border-color: var(--accent-border);
+}
+
+@media (max-width: 640px) {
+  .consignar {
+    padding: 20px;
+  }
+}
+
+.tituloConsignar {
+  margin: 0 0 20px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campo label,
+.medios legend {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.campo input {
+  min-height: 56px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.campo input:focus-visible {
+  border-color: var(--accent-text);
+}
+
+/* Atajos de monto: pildoras; la elegida va en blanco */
+.atajos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.atajo {
+  min-height: var(--tap);
+  padding: 0 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.atajo:hover {
+  border-color: var(--text-muted);
+}
+
+.atajoActivo,
+.atajoActivo:hover {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Medio de pago: tres opciones del mismo ancho */
+.medios {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.medios legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.opcionesMedio {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.medio {
+  min-height: 60px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.medio:hover {
+  border-color: var(--text-muted);
+}
+
+.medioActivo,
+.medioActivo:hover {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+}
+
+/* "Recibes 500 PBT" */
+.recibes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid var(--row-border);
+}
+
+.recibes b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.comprar {
+  width: 100%;
+  min-height: 60px;
+}
+
+.comprar:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.mensaje {
+  color: var(--ok);
+  font-size: 14px;
+}
+
+.mensajeError {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* Mensaje bajo el monto ("El monto debe ser múltiplo de $1.000 COP") */
+.errorCampo {
+  color: var(--accent-text);
+  font-size: 13px;
+}
+
+.campo input[aria-invalid="true"] {
+  border-color: var(--accent-border);
+}
+
+/* Mientras se envia la compra los controles quedan bloqueados */
+.campo input:disabled,
+.atajo:disabled,
+.medios:disabled .medio {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+/* Error al cargar el saldo, con boton para reintentar */
+.errorSaldo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}

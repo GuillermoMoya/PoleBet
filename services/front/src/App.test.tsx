@@ -53,7 +53,7 @@ describe("rutas", () => {
 
   it("el jugador ve la carrera y la billetera", () => {
     abrir("/billetera", USUARIOS_SIMULADOS.player);
-    expect(screen.getByText("Pendiente: HU-03")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Billetera" })).toBeInTheDocument();
   });
 
   it("el jugador no puede entrar a /admin", () => {

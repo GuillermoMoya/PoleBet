@@ -54,6 +54,26 @@ docker compose exec pagos python -m app.cli crear-usuario --email ana@arqui.loca
 docker compose exec pagos python -m app.cli crear-usuario --email admin@arqui.local --nombre Admin --password admin1234 --admin
 ```
 
+## Billetera (HU-03)
+
+Solo jugadores: el admin recibe 403 (HU-12); sin sesión, 401.
+
+| Endpoint | Qué hace | Respuestas |
+| --- | --- | --- |
+| `GET /billetera` | Saldo del jugador y tasa de conversión | 200 `{saldo, cop_por_token}` |
+| `POST /billetera/compras` | Body `{"monto_cop"}` + header `Idempotency-Key`. Pago simulado (siempre aprobado), convierte con `COP_PER_TOKEN` y acredita | 201 `{compra_id, tokens_acreditados, saldo, creada_en}` · 200 reenvío de la misma clave (no acredita de nuevo) · 400 sin `Idempotency-Key` · 409 misma clave con otro monto · 422 monto ≤ 0, no múltiplo de la tasa o mayor a $10.000.000 |
+
+- Ledger + saldo en una sola transacción (RNF-01). El saldo se suma con `balance = balance + x` en un solo `UPDATE`, así dos compras simultáneas no se pisan.
+- Idempotencia (RNF-02): la clave se guarda como `compra:<user_id>:<clave>` en `ledger_entries.idempotency_key` (única). Si llegan dos peticiones con la misma clave a la vez, la restricción única decide y la segunda responde como reenvío.
+- La lógica está en `app/services/billetera.py` para que el débito de apuestas (HU-06) reutilice el mismo patrón.
+
+> **Si `POST /billetera/compras` responde 500 con `column ledger_entries.bet_id does not exist`:** tu Postgres tiene tablas de una versión borrador del modelo (`create_all` no actualiza tablas existentes). Si `ledger_entries` y `bets` están vacías, bórralas y reinicia Pagos para que se creen bien:
+> ```
+> docker compose exec postgres psql -U arqui -d arqui_pagos -c "DROP TABLE ledger_entries, bets;"
+> docker compose restart pagos
+> ```
+> (`arqui` / `arqui_pagos` son `POSTGRES_USER` / `POSTGRES_DB` de tu `.env`.)
+
 ## Contrato de sesión con el motor (Go)
 
 Debe coincidir con `services/motor/internal/auth/contrato.go`:
