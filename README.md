@@ -1,4 +1,4 @@
-# Prototipo 1 — ArquiSoft
+# Motor de apuestas (Go) - Prototipo 1
 
 Plataforma de apuestas en vivo sobre carreras de F1 con **tokens simulados**
 (sin dinero real). Este repositorio contiene el **Prototipo 1**: un corte
@@ -73,3 +73,62 @@ Todo se configura en `.env` (copiado de `.env.example`). Variables clave:
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin (RF-13 / HU-12)    |
 | `BETTING_WINDOW_SECONDS`     | Duración de la ventana de apuestas (RF-07/09) |
 | `OBSERVATION_WINDOW_SECONDS` | Ventana de observación antes de liquidar      |
+| `MONGO_USER` / `MONGO_PASSWORD` / `MONGO_DB` | Credenciales de MongoDB       |
+
+## Ingesta de datos de carrera (HU-04)
+
+El paquete `internal/ingest` del motor trae datos de **OpenF1** y los guarda
+normalizados en MongoDB. Ver
+[`services/motor/internal/ingest/README.md`](services/motor/internal/ingest/README.md)
+para el detalle completo.
+
+Resumen rápido:
+
+1. Encuentra un `session_key` de OpenF1:
+
+   ```bash
+   curl "https://api.openf1.org/v1/sessions?year=2024&location=Monza&session_name=Race"
+   ```
+
+   Para Monza 2024 Race: `session_key=9590`.
+
+2. Genera un JWT de admin (temporal, hasta que HU-02 esté lista):
+
+   ```powershell
+   docker exec -it arqui_pagos python -c "import os, jwt, datetime; secret = os.environ['JWT_SECRET']; token = jwt.encode({'sub': '00000000-0000-0000-0000-000000000001', 'rol': 'admin', 'exp': datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)}, secret, algorithm='HS256'); print(token)"
+   ```
+
+3. Dispara la ingesta (ojo con los escapes de PowerShell):
+
+   ```powershell
+   Set-Content -Path body.json -Value '{"carrera_id":"2024_monza","session_key":9590}'
+
+   curl.exe -X POST http://localhost:8080/ingest/openf1 `
+     -H "Cookie: session=$TOKEN" `
+     -H "Content-Type: application/json" `
+     --data-binary "@body.json"
+
+   Remove-Item body.json
+   ```
+
+4. Verifica en MongoDB:
+
+   ```powershell
+   docker exec -it arqui_mongo mongosh "mongodb://arqui:arqui_pass@localhost:27017/apuestas_db?authSource=admin" `
+     --eval "print(db.eventos_carrera.countDocuments({carrera_id:'2024_monza'}))"
+   ```
+
+> **Nota:** el JWT se manda al motor como cookie `session`, no como header
+> `Authorization`. El motor solo valida la firma y el rol; no consulta a
+> Pagos en cada petición.
+
+## Datos de prueba
+
+`db/mongo/init/02-seed-data.js` carga una carrera, eventos, un mercado
+abierto y una apuesta de contexto al primer arranque del volumen. Si ya
+tenías el volumen creado:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
