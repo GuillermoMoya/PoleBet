@@ -167,10 +167,10 @@ permite recuperar mercados si el proceso cae mientras los reclama.
 - Si se reproduce dos veces la misma carrera a la vez, la más nueva es la que
   cuenta para el latido; los `emitido_en` se sobrescriben con la última emisión.
 - Un mercado o apuesta de prueba solo puede liquidarse si tiene un registro
-  financiero real en Pagos. Los contextos semilla ficticios no equivalen a
-  apuestas debitadas ni deben generar movimientos financieros.
-- El mercado del seed empieza su ventana en el arranque de MongoDB; el
-  arranque de Compose puede consumir parte o toda la ventana de 30 segundos.
+  financiero real en Pagos. Un contexto insertado a mano en MongoDB no
+  equivale a una apuesta debitada ni debe generar movimientos financieros.
+- El seed (`db/mongo/init/02-seed-data.js`) no crea mercados: solo la carrera
+  `2024_monza` y unos eventos. Los mercados los abre el admin desde `/admin`.
 - El PDF aprobado de componentes/conectores muestra OpenF1 por WebSockets,
   mientras que la aclaración textual y la implementación HU-04 usan REST.
   Esta implementación conserva REST y no declara resuelta esa discrepancia.

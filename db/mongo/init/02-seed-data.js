@@ -156,35 +156,16 @@ const eventos = [
 db.eventos_carrera.insertMany(eventos, { ordered: false });
 print('  ✅ ' + eventos.length + ' eventos insertados');
 
-// ------------------------------------------------------------
-// 3. MERCADO DE PRUEBA (abierto)
-// ------------------------------------------------------------
-const ahora = new Date();
-const ventanaApuestas = 30;    // segundos
-const ventanaObservacion = 60; // segundos
-
-const mercadoId = new ObjectId();
-db.mercados.insertOne({
-  _id: mercadoId,
-  carrera_id: carreraId,
-  // Mismo tipo, pregunta y opciones que fija el motor al abrir un mercado
-  // (services/motor/internal/mercados/servicio.go).
-  tipo: 'cambio_posicion',
-  pregunta: '¿Habrá algún cambio de posición durante la ventana de observación?',
-  opciones: ['Sí', 'No'],
-  estado: 'abierto',
-  abre_en: ahora,
-  cierra_en: new Date(ahora.getTime() + ventanaApuestas * 1000),
-  observa_hasta: new Date(ahora.getTime() + (ventanaApuestas + ventanaObservacion) * 1000),
-  resultado: null,
-  puntos_otorgados: null,
-  creado_por: 'admin@polebets.local',
-  creado_en: ahora,
-  liquidado_en: null
-});
-print('  ✅ Mercado insertado (abierto)');
+// No se siembra ningún mercado: los abre el admin desde /admin (HU-11).
+// Un mercado sembrado nacía con la ventana corriendo desde el arranque de
+// MongoDB: el motor lo cerraba al iniciar, el worker de HU-07 lo reintentaba
+// cada 2 s para siempre (sin reproducción no hay forma de liquidarlo) y
+// aparecía como mercado actual en /admin.
 
 print('');
 print('========================================');
 print('✅ Datos de prueba insertados');
+print('  - Carrera: ' + carreraId);
+print('  - Eventos: ' + eventos.length);
+print('  - Mercados: ninguno (los abre el admin)');
 print('========================================');

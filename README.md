@@ -175,8 +175,10 @@ Resumen rápido:
 
 ## Datos de prueba
 
-`db/mongo/init/02-seed-data.js` carga una carrera, eventos y un mercado
-abierto solo al primer arranque de un volumen Mongo vacío. Los volúmenes
-existentes no se recrean ni migran automáticamente: antes de usar mercados
-preexistentes en HU-07, deben declarar explícitamente su tipo admitido.
+`db/mongo/init/02-seed-data.js` carga la carrera `2024_monza` y unos eventos
+solo al primer arranque de un volumen Mongo vacío. No crea mercados: los abre
+el admin desde `/admin`. Los volúmenes existentes no se recrean ni migran
+automáticamente: si un volumen viejo tiene mercados sin `tipo:
+"cambio_posicion"` (p. ej. el mercado que sembraban versiones anteriores),
+HU-07 no los liquidará; recrea el volumen o bórralos.
 No borres volúmenes que contengan datos que quieras conservar.
