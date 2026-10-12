@@ -26,6 +26,7 @@ src/
   componentes/            # Layout (header) y Pendiente (placeholder)
   paginas/                # una pantalla por ruta
   posiciones/             # HU-05: posiciones en vivo
+  mercados/               # HU-11: mercado actual, panel del admin y estado en /carrera
   apuestas/               # HU-06: apostar (JavaScript)
 ```
 

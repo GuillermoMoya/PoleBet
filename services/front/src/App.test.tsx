@@ -59,14 +59,16 @@ describe("rutas", () => {
   it("el jugador no puede entrar a /admin", () => {
     abrir("/admin", USUARIOS_SIMULADOS.player);
     expect(screen.getByRole("heading", { name: "Acceso denegado" })).toBeInTheDocument();
-    expect(screen.queryByText(/HU-11/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Abrir un mercado" })).not.toBeInTheDocument();
   });
 
-  it("el admin entra a /admin y solo ve su enlace en el menu", () => {
+  it("el admin entra a /admin y solo ve su enlace en el menu", async () => {
     abrir("/admin", USUARIOS_SIMULADOS.admin);
-    expect(screen.getByText("Pendiente: HU-11 y HU-12")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Abrir un mercado" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "En vivo" })).not.toBeInTheDocument();
+    // Espera la carga inicial del mercado (el 404 de arriba = sin mercado).
+    expect(await screen.findByText("Todavía no se ha abierto ningún mercado.")).toBeInTheDocument();
   });
 
   it("la raiz lleva al jugador a /carrera", async () => {

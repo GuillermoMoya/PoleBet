@@ -12,6 +12,9 @@ internal/httpx       # JSON y CORS compartidos
 internal/health      # GET /health (503 si MongoDB no responde)
 internal/auth        # valida el JWT de Pagos; middleware REST y WebSocket
 internal/ws          # hub de WebSocket: GET /ws, Difundir y EnviarA
+internal/apuestas    # HU-06: POST /apuestas
+internal/mercados    # HU-11: abrir mercado y ciclo abierto → cerrado → liquidar
+internal/ingest      # HU-04: ingesta de OpenF1 y replay
 ```
 
 Para agregar una HU, crea un paquete en `internal/` con una función `Register(mux, ...)` y llámala desde `main.go`. Así nadie edita el paquete de otro:
@@ -87,7 +90,30 @@ hub.Difundir(ws.Mensaje{Type: ws.TipoMercadoAbierto, Payload: mercado})
 hub.EnviarA(userID, ws.Mensaje{Type: ws.TipoResultadoApuesta, Payload: resultado})
 ```
 
-El `payload` de cada tipo lo define quien implementa la HU; documéntalo aquí cuando quede listo. Propuesta para `resultado_apuesta` (HU-08):
+El `payload` de cada tipo lo define quien implementa la HU; documéntalo aquí cuando quede listo.
+
+`mercado_abierto` y `mercado_cerrado` (HU-11) llevan el mercado completo, igual que `GET /mercados/actual`:
+
+```json
+{
+  "type": "mercado_abierto",
+  "payload": {
+    "id": "6708f1c2a1b2c3d4e5f60718",
+    "carrera_id": "2024_monza",
+    "pregunta": "¿Quién irá primero al terminar el minuto?",
+    "opciones": ["VER", "NOR", "LEC"],
+    "estado": "abierto",
+    "abre_en": "2026-10-11T15:00:00Z",
+    "cierra_en": "2026-10-11T15:00:30Z",
+    "observa_hasta": "2026-10-11T15:01:30Z",
+    "ahora": "2026-10-11T15:00:00.012Z"
+  }
+}
+```
+
+`ahora` es la hora del servidor al enviar el mensaje: el front calcula con ella el desfase de su reloj para que la cuenta regresiva no dependa del navegador. Igual, quien decide el cierre es el motor (RNF-05). Se propone que `mercado_liquidado` (HU-07) use el mismo payload con `estado: "liquidado"`; el front ya lo escucha así.
+
+Propuesta para `resultado_apuesta` (HU-08):
 
 ```json
 {
@@ -104,6 +130,39 @@ El `payload` de cada tipo lo define quien implementa la HU; documéntalo aquí c
 ```
 
 Por ahora el front no envía mensajes por el WebSocket: las acciones (apostar, abrir mercado) van por REST. Si la conexión se cae, el front debe reconectarse solo (HU-05).
+
+## Mercados (HU-11)
+
+| Ruta | Quién | Respuesta |
+| --- | --- | --- |
+| `POST /mercados` | solo admin (401 sin sesión, 403 si no es admin) | `201` con el mercado ya abierto |
+| `GET /mercados/actual` | cualquier sesión | `200` con el mercado más reciente (en el estado que esté) o `null` si nunca se abrió uno |
+
+Cuerpo de `POST /mercados`:
+
+```json
+{ "pregunta": "¿Quién irá primero al terminar el minuto?", "opciones": ["VER", "NOR", "LEC"], "carrera_id": "2024_monza" }
+```
+
+- `carrera_id` es opcional: si no viene se usa la última carrera cargada en `carreras` (HU-04).
+- Pregunta de 1 a 200 caracteres; de 2 a 10 opciones, sin repetir (sin importar mayúsculas), de máximo 100 caracteres cada una (el largo de `bets.option` en Pagos).
+- Errores: `400` validación (el mensaje dice qué corregir), `404` carrera inexistente, `409` ya hay un mercado abierto, `422` no hay ninguna carrera cargada.
+
+Ciclo, siempre con el reloj del servidor:
+
+1. Al abrirlo se guardan `abre_en`, `cierra_en = abre_en + BETTING_WINDOW_SECONDS` y `observa_hasta = cierra_en + OBSERVATION_WINDOW_SECONDS`, y se difunde `mercado_abierto`.
+2. En `cierra_en` pasa a `cerrado` y se difunde `mercado_cerrado`. HU-06 además compara `cierra_en` con su propio reloj, así que una apuesta que llega tarde se rechaza aunque el temporizador se atrase.
+3. En `observa_hasta` se llama a `Servicio.Liquidador` (HU-07). Mientras HU-07 no exista, solo se registra en el log. HU-07 se conecta en `registrarMercados` de `main.go` implementando `mercados.Liquidador`; debe ser idempotente, porque tras un reinicio se vuelve a llamar para los mercados cerrados sin liquidar.
+
+Solo puede haber un mercado abierto a la vez: lo impide el servicio y, además, un índice único parcial (`uq_un_mercado_abierto`) que el motor crea al arrancar. Si el motor se reinicia, retoma los mercados pendientes: cierra los que vencieron mientras estaba apagado y reprograma los demás.
+
+Probarlo a mano (con el JWT de admin del README de la raíz en `$TOKEN`):
+
+```bash
+curl -X POST http://localhost:8080/mercados -H "Cookie: session=$TOKEN" -H "Content-Type: application/json" \
+  -d '{"pregunta":"¿Quién irá primero?","opciones":["VER","NOR","LEC"]}'
+curl http://localhost:8080/mercados/actual -H "Cookie: session=$TOKEN"
+```
 
 ## Correr y probar
 

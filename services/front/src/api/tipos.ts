@@ -12,8 +12,8 @@ export interface MensajeWs<T = unknown> {
   payload: T;
 }
 
-// Tipos de mensaje acordados con el motor. Solo "posiciones" esta implementado
-// en el front (HU-05); los demas quedan reservados para sus historias.
+// Tipos de mensaje acordados con el motor. Los de HU-07 y HU-08 quedan
+// reservados para sus historias.
 export const TIPOS_WS = {
   posiciones: "posiciones", // HU-05
   mercadoAbierto: "mercado_abierto", // HU-11
@@ -46,6 +46,33 @@ export interface FotoPosiciones {
   actualizado_en: string; // ISO: cuando cambio el dato en la carrera
   emitido_en?: string; // ISO: cuando el motor envio el mensaje (latencia, RNF-04)
   pilotos: Piloto[];
+}
+
+// ---------------------------------------------------------------------------
+// HU-11: mercados
+// ---------------------------------------------------------------------------
+// Payload de "mercado_abierto" y "mercado_cerrado", y respuesta de
+// GET /mercados/actual y POST /mercados (services/motor/README.md).
+
+export type EstadoMercado = "abierto" | "cerrado" | "liquidado";
+
+export interface Mercado {
+  id: string;
+  carrera_id: string;
+  pregunta: string;
+  opciones: string[];
+  estado: EstadoMercado;
+  abre_en: string; // ISO
+  cierra_en: string; // ISO: fin de la ventana de apuestas
+  observa_hasta: string; // ISO: fin de la ventana de observacion
+  ahora: string; // ISO: hora del servidor al enviar (para el desfase del reloj)
+}
+
+// Lo que envia el admin para abrir un mercado.
+export interface PeticionMercado {
+  pregunta: string;
+  opciones: string[];
+  carrera_id?: string; // sin el, el motor usa la ultima carrera cargada
 }
 
 // ---------------------------------------------------------------------------

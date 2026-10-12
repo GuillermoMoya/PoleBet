@@ -1,0 +1,78 @@
+/* Estado del mercado (HU-11). */
+
+.estado {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Fuera de la ventana de apuestas la etiqueta va en gris. */
+.etiquetaApagada {
+  background: var(--border-strong);
+}
+
+.cuenta {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pregunta {
+  margin: 0;
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.opciones li {
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+/* Linea de tiempo Abierto -> Cerrado -> Liquidado */
+.pasos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.pasos li {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.pasoHecho {
+  color: var(--text);
+}
+
+.pasoActual {
+  border-color: var(--accent-border) !important;
+  background: var(--accent-surface);
+  color: var(--text);
+  font-weight: 700;
+}
