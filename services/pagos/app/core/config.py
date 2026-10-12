@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = "session"
     # En produccion con HTTPS debe ser True. En la demo local (http) va en False.
     session_cookie_secure: bool = False
+    internal_api_token: str
 
     # ---- Economia del token (RF-03) ----
     cop_per_token: float = 1000.0
@@ -61,6 +62,16 @@ class Settings(BaseSettings):
     def _admin_password_required(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("ADMIN_PASSWORD no puede estar vacío")
+        return value
+
+    @field_validator("internal_api_token")
+    @classmethod
+    def _internal_api_token_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("INTERNAL_API_TOKEN no puede estar vacío")
+        if len(value) < 32:
+            raise ValueError("INTERNAL_API_TOKEN debe tener al menos 32 caracteres")
         return value
 
     @field_validator("allowed_origins", mode="before")

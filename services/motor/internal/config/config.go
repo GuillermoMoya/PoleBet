@@ -14,11 +14,12 @@ import (
 )
 
 type Config struct {
-	MongoURI     string
-	MongoDB      string
-	HTTPPort     string
-	JWTSecret    string
-	PagosBaseURL string
+	MongoURI         string
+	MongoDB          string
+	HTTPPort         string
+	JWTSecret        string
+	PagosBaseURL     string
+	InternalAPIToken string
 
 	// OrigenesPermitidos son los origenes del front que pueden llamar al
 	// motor con cookies (CORS) y abrir el WebSocket.
@@ -51,12 +52,16 @@ func desde(getenv func(string) string) (Config, error) {
 		MongoDB:      requerida("MONGO_DB"),
 		JWTSecret:    requerida("JWT_SECRET"),
 		PagosBaseURL: requerida("PAGOS_BASE_URL"),
+		InternalAPIToken: requerida("INTERNAL_API_TOKEN"),
 		HTTPPort:     opcional(getenv, "HTTP_PORT", "8080"),
 	}
 	origenes := separarLista(requerida("ALLOWED_ORIGINS"))
 
 	if len(faltan) > 0 {
 		return Config{}, fmt.Errorf("faltan variables de entorno obligatorias: %s", strings.Join(faltan, ", "))
+	}
+	if len(cfg.InternalAPIToken) < 32 {
+		return Config{}, fmt.Errorf("INTERNAL_API_TOKEN debe tener al menos 32 caracteres")
 	}
 	if len(origenes) == 0 {
 		return Config{}, fmt.Errorf("ALLOWED_ORIGINS no tiene ningun origen valido")

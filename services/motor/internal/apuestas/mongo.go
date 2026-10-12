@@ -58,6 +58,7 @@ func (r *contextosMongo) Guardar(ctx context.Context, c Contexto) error {
 		"creada_en":  c.CreadaEn,
 		"liquidada":  false,
 		"gano":       nil,
+		"puntos_obtenidos": float64(0),
 	})
 	// Reintento con la misma clave: el indice unico de apuesta_id ya la tiene.
 	if mongo.IsDuplicateKeyError(err) {

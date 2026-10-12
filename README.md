@@ -39,7 +39,8 @@ Un solo comando desde la raíz del repositorio:
 
 ```bash
 cp .env.example .env     # solo la primera vez
-# Edita .env y define ADMIN_EMAIL y ADMIN_PASSWORD antes de continuar.
+# Edita .env, define ADMIN_EMAIL y ADMIN_PASSWORD, y genera un
+# INTERNAL_API_TOKEN aleatorio (el mismo valor se usa en Motor y Pagos).
 docker compose up --build
 ```
 
@@ -73,7 +74,20 @@ Todo se configura en `.env` (copiado de `.env.example`). Variables clave:
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin (RF-13 / HU-12)    |
 | `BETTING_WINDOW_SECONDS`     | Duración de la ventana de apuestas (RF-07/09) |
 | `OBSERVATION_WINDOW_SECONDS` | Ventana de observación antes de liquidar      |
+| `INTERNAL_API_TOKEN`         | Token compartido Motor→Pagos para operaciones internas |
 | `MONGO_USER` / `MONGO_PASSWORD` / `MONGO_DB` | Credenciales de MongoDB       |
+
+## Liquidación limitada HU-07
+
+La demo automática solo liquida mercados `driver_first_position` usando
+muestras OpenF1 persistidas dentro de la ventana del mercado. Requiere
+`PAGOS_MOCK=false`, `INTERNAL_API_TOKEN` idéntico en ambos servicios y
+apuestas debitadas en Pagos; las muestras históricas seed no se usan como
+resultado de un mercado actual. El alcance, contrato, regla temporal y límites
+están descritos en
+[`documentation/hu-07-liquidacion-apuestas.md`](documentation/hu-07-liquidacion-apuestas.md).
+La demo backend no agrega la apertura de mercados de HU-11 ni la ingesta
+continua de HU-04; consulta las limitaciones operativas del documento.
 
 ## Ingesta de datos de carrera (HU-04)
 
@@ -124,11 +138,8 @@ Resumen rápido:
 
 ## Datos de prueba
 
-`db/mongo/init/02-seed-data.js` carga una carrera, eventos, un mercado
-abierto y una apuesta de contexto al primer arranque del volumen. Si ya
-tenías el volumen creado:
-
-```bash
-docker compose down -v
-docker compose up --build
-```
+`db/mongo/init/02-seed-data.js` carga una carrera, eventos y un mercado
+abierto solo al primer arranque de un volumen Mongo vacío. Los volúmenes
+existentes no se recrean ni migran automáticamente: antes de usar mercados
+preexistentes en HU-07, deben declarar explícitamente su tipo admitido.
+No borres volúmenes que contengan datos que quieras conservar.

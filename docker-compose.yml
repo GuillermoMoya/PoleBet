@@ -67,6 +67,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES}
       COP_PER_TOKEN: ${COP_PER_TOKEN}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
@@ -100,7 +101,8 @@ services:
       MONGO_DB: ${MONGO_DB}
       JWT_SECRET: ${JWT_SECRET}
       PAGOS_BASE_URL: http://pagos:8000
-      PAGOS_MOCK: ${PAGOS_MOCK:-false}   # true = débitos simulados (HU-06) mientras Pagos no tenga /internal/debit
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      PAGOS_MOCK: ${PAGOS_MOCK:-false}   # true = débito HU-06 simulado; HU-07 no se ejecuta
       BETTING_WINDOW_SECONDS: ${BETTING_WINDOW_SECONDS}
       OBSERVATION_WINDOW_SECONDS: ${OBSERVATION_WINDOW_SECONDS}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}

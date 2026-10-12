@@ -15,6 +15,7 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://arqui:arqui_pass@localhost:5432/apuestas_db")
 os.environ.setdefault("JWT_SECRET", "secreto-de-pruebas")
+os.environ["INTERNAL_API_TOKEN"] = "token-interno-de-pruebas-para-hu07"
 os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("DB_CONNECT_RETRIES", "1")
 os.environ.setdefault("DB_CONNECT_RETRY_SECONDS", "0")
@@ -35,7 +36,7 @@ def client():
     from app.core.config import settings
     from app.db import SessionLocal
     from app.main import app
-    from app.models import ROLE_ADMIN, User
+    from app.models import ROLE_ADMIN, Bet, User
 
     try:
         with TestClient(app) as c:  # "with" ejecuta el lifespan (crea tablas)
@@ -83,6 +84,7 @@ def make_user():
         # Primero sus movimientos del ledger (HU-03): tienen FK al usuario.
         if created:
             db.execute(delete(LedgerEntry).where(LedgerEntry.user_id.in_(created)))
+            db.execute(delete(Bet).where(Bet.user_id.in_(created)))
         for uid in created:
             obj = db.get(User, uid)
             if obj:

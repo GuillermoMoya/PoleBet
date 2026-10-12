@@ -11,6 +11,7 @@ internal/mongodb     # conexión a MongoDB
 internal/httpx       # JSON y CORS compartidos
 internal/health      # GET /health (503 si MongoDB no responde)
 internal/auth        # valida el JWT de Pagos; middleware REST y WebSocket
+internal/liquidacion # HU-07: cierre, observación y liquidación reintentable
 internal/ws          # hub de WebSocket: GET /ws, Difundir y EnviarA
 ```
 
@@ -53,12 +54,33 @@ Dentro del handler, `sesion, _ := auth.SesionDe(r.Context())` entrega `sesion.Us
 | `MONGO_DB` | sí | `apuestas_db` |
 | `JWT_SECRET` | sí | el mismo que usa Pagos |
 | `PAGOS_BASE_URL` | sí | `http://pagos:8000` |
+| `INTERNAL_API_TOKEN` | sí | Token compartido con Pagos para `/internal/*` |
 | `ALLOWED_ORIGINS` | sí | `http://localhost:5173,http://127.0.0.1:5173` |
 | `HTTP_PORT` | no (8080) | `8080` |
 | `BETTING_WINDOW_SECONDS` | no (30) | `30` |
 | `OBSERVATION_WINDOW_SECONDS` | no (60) | `60` |
 
 Si falta una obligatoria, el motor no arranca y el log dice cuál falta.
+`PAGOS_MOCK=true` desactiva HU-07: una apuesta simulada no tiene registro
+financiero en PostgreSQL y no puede liquidarse en el ledger.
+
+## Liquidación HU-07 (demo limitada)
+
+El worker consulta cada dos segundos los mercados vencidos, cierra los que
+superaron `cierra_en`, espera hasta `observa_hasta` y solo resuelve
+`tipo: "driver_first_position"`. Filtra los eventos por `timestamp` de carrera
+en el intervalo inclusivo `[cierra_en, observa_hasta]` y exige que `leido_en`
+también esté dentro del intervalo para descartar cargas tardías. Solo combina
+posiciones con timestamp igual al milisegundo y elige el instante más reciente
+que tenga una posición válida para cada piloto del roster; no combina filas
+tomadas en tiempos incompatibles. La muestra no se considera una clasificación
+oficial final. Ante datos ausentes, ambiguos o una falla de servicio conserva
+el mercado cerrado, registra `liquidacion_error` en MongoDB y reintenta. Los
+contratos y límites completos están en
+[`../../documentation/hu-07-liquidacion-apuestas.md`](../../documentation/hu-07-liquidacion-apuestas.md).
+HU-04 no ingiere datos continuamente: durante la observación se debe invocar
+el endpoint existente `POST /ingest/openf1`; no hay un job automático que
+consuma OpenF1 en vivo.
 
 ## Mensajes del WebSocket
 

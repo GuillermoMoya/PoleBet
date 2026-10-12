@@ -74,6 +74,30 @@ Solo jugadores: el admin recibe 403 (HU-12); sin sesión, 401.
 > ```
 > (`arqui` / `arqui_pagos` son `POSTGRES_USER` / `POSTGRES_DB` de tu `.env`.)
 
+## Operaciones internas de apuestas (HU-06/HU-07)
+
+Las rutas internas requieren `X-Internal-Service-Token`, comparado con
+`INTERNAL_API_TOKEN`, y `Idempotency-Key`. El token debe tener al menos 32
+caracteres aleatorios y configurarse de forma idéntica en Motor y Pagos; el
+servicio no arranca si falta o es demasiado corto.
+
+| Endpoint | Entrada | Respuestas |
+| --- | --- | --- |
+| `POST /internal/debit` | `{bet_id, user_id, market_id, option, amount, idempotency_key}` | 201 apuesta nueva · 200 reenvío idéntico · 400 clave inválida · 401 token inválido · 404 usuario inexistente · 409 contenido distinto para el ID/clave · 422 saldo insuficiente o cuerpo inválido |
+| `POST /internal/settlements` | `{bet_id, result: "won"\|"lost", points, idempotency_key}` | 201 liquidación nueva · 200 reenvío idéntico · 400 clave inválida · 401 token inválido · 404 apuesta inexistente · 409 resultado/clave incompatible · 422 puntos inválidos |
+
+El débito crea la apuesta, reduce el saldo de tokens y registra
+`bet_debit` en una transacción PostgreSQL. La liquidación bloquea la apuesta,
+verifica la fórmula, cambia su estado, actualiza los puntos y registra
+`bet_settlement` (tokens delta cero) en una sola transacción. Una misma clave
+y contenido devuelven el movimiento existente; otro contenido se rechaza.
+MongoDB y PostgreSQL no comparten una transacción: Motor conserva un lease y
+reintenta con una clave estable si no puede persistir la respuesta local.
+
+El detalle del alcance, la resolución de datos y la discrepancia de transporte
+REST/WebSockets está en
+[`../../documentation/hu-07-liquidacion-apuestas.md`](../../documentation/hu-07-liquidacion-apuestas.md).
+
 ## Contrato de sesión con el motor (Go)
 
 Debe coincidir con `services/motor/internal/auth/contrato.go`:

@@ -12,11 +12,12 @@ func entorno(vars map[string]string) func(string) string {
 
 func entornoCompleto() map[string]string {
 	return map[string]string{
-		"MONGO_URI":       "mongodb://localhost:27017",
-		"MONGO_DB":        "apuestas_db",
-		"JWT_SECRET":      "secreto",
-		"PAGOS_BASE_URL":  "http://pagos:8000",
-		"ALLOWED_ORIGINS": "http://localhost:5173, http://127.0.0.1:5173",
+		"MONGO_URI":          "mongodb://localhost:27017",
+		"MONGO_DB":           "apuestas_db",
+		"JWT_SECRET":         "secreto",
+		"PAGOS_BASE_URL":     "http://pagos:8000",
+		"INTERNAL_API_TOKEN": "token-interno-de-pruebas-para-hu07",
+		"ALLOWED_ORIGINS":    "http://localhost:5173, http://127.0.0.1:5173",
 	}
 }
 
@@ -67,5 +68,13 @@ func TestVentanaInvalida(t *testing.T) {
 		if _, err := desde(entorno(vars)); err == nil {
 			t.Errorf("BETTING_WINDOW_SECONDS=%q deberia fallar", v)
 		}
+	}
+}
+
+func TestTokenInternoCorto(t *testing.T) {
+	vars := entornoCompleto()
+	vars["INTERNAL_API_TOKEN"] = "demasiado-corto"
+	if _, err := desde(entorno(vars)); err == nil {
+		t.Fatal("se esperaba rechazo de INTERNAL_API_TOKEN corto")
 	}
 }

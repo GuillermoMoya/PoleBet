@@ -118,13 +118,17 @@ db.createCollection('mercados', {
     $jsonSchema: {
       bsonType: 'object',
       required: [
-        'carrera_id', 'pregunta', 'opciones', 'estado',
+        'carrera_id', 'tipo', 'pregunta', 'opciones', 'estado',
         'abre_en', 'cierra_en', 'creado_en'
       ],
       properties: {
         carrera_id: {
           bsonType: 'string',
           description: 'Carrera a la que pertenece el mercado'
+        },
+        tipo: {
+          enum: ['driver_first_position'],
+          description: 'Tipo explícito de mercado implementado por la demo HU-07'
         },
         pregunta: {
           bsonType: 'string',
@@ -157,8 +161,24 @@ db.createCollection('mercados', {
           description: 'Opción ganadora tras la liquidación'
         },
         puntos_otorgados: {
-          bsonType: ['int', 'null'],
+          bsonType: ['int', 'double', 'null'],
           description: 'Fórmula aplicada al liquidar'
+        },
+        liquidacion_error: {
+          bsonType: 'string',
+          description: 'Diagnóstico del último intento fallido de liquidación'
+        },
+        liquidacion_reintento_en: {
+          bsonType: 'date',
+          description: 'Momento mínimo del próximo intento automático'
+        },
+        liquidacion_lease: {
+          bsonType: 'string',
+          description: 'Token de adquisición temporal del mercado'
+        },
+        liquidacion_lease_hasta: {
+          bsonType: 'date',
+          description: 'Vencimiento del lease para recuperación tras caída'
         },
         creado_por: {
           bsonType: 'string',
@@ -180,6 +200,7 @@ db.createCollection('mercados', {
 // El motor consulta constantemente:
 // "¿hay mercados abiertos o por cerrar?"
 db.mercados.createIndex({ estado: 1, cierra_en: 1 });
+db.mercados.createIndex({ estado: 1, observa_hasta: 1, liquidacion_reintento_en: 1 });
 // Índice por carrera para listar mercados de una sesión
 db.mercados.createIndex({ carrera_id: 1, creado_en: -1 });
 
@@ -238,6 +259,11 @@ db.createCollection('apuestas_contexto', {
         gano: {
           bsonType: ['bool', 'null'],
           description: 'Resultado tras la liquidación'
+        },
+        puntos_obtenidos: {
+          bsonType: ['double', 'int'],
+          minimum: 0,
+          description: 'Puntos confirmados por Pagos'
         }
       }
     }
@@ -267,6 +293,6 @@ print('  2. eventos_carrera      (datos crudos de OpenF1)');
 print('  3. mercados             (mercados del admin)');
 print('  4. apuestas_contexto    (contexto de apuestas del motor)');
 print('');
-print('Índices creados: 9');
+print('Índices creados: 10');
 print('Validaciones: 4 (una por colección)');
 print('========================================');

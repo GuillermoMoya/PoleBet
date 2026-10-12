@@ -179,7 +179,7 @@ func TestPagosHTTPTraduceCodigos(t *testing.T) {
 	}{
 		{200, nil},
 		{201, nil},
-		{409, nil}, // clave ya procesada = exito
+		{409, ErrPagosConflicto},
 		{422, ErrSaldoInsuficiente},
 		{404, ErrUsuarioNoExiste},
 		{500, ErrPagosNoDisponible},
@@ -188,9 +188,12 @@ func TestPagosHTTPTraduceCodigos(t *testing.T) {
 		var ruta, clave string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ruta, clave = r.URL.Path, r.Header.Get("Idempotency-Key")
+			if r.Header.Get("X-Internal-Service-Token") != "token-prueba-para-liquidacion-hu07" {
+				t.Errorf("falta el token de servicio")
+			}
 			w.WriteHeader(c.status)
 		}))
-		err := NuevoPagosHTTP(srv.URL).Debitar(context.Background(), Debito{BetID: "b", IdempotencyKey: "k1"})
+		err := NuevoPagosHTTP(srv.URL, "token-prueba-para-liquidacion-hu07").Debitar(context.Background(), Debito{BetID: "b", IdempotencyKey: "k1"})
 		srv.Close()
 
 		if !errors.Is(err, c.quiero) {
@@ -206,8 +209,58 @@ func TestPagosHTTPSinConexion(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
 	srv.Close() // nadie escucha
-	if err := NuevoPagosHTTP(url).Debitar(context.Background(), Debito{}); !errors.Is(err, ErrPagosNoDisponible) {
+	if err := NuevoPagosHTTP(url, "token-prueba-para-liquidacion-hu07").Debitar(context.Background(), Debito{}); !errors.Is(err, ErrPagosNoDisponible) {
 		t.Errorf("error = %v", err)
+	}
+}
+
+func TestPagosHTTPLiquidarContrato(t *testing.T) {
+	const betID = "3f2b8c1e-9a4d-4e6f-8b1a-2c3d4e5f6a7b"
+	const key = "bet-settlement:" + betID
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != RutaLiquidacion {
+			t.Errorf("petición inesperada: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Idempotency-Key") != key ||
+			r.Header.Get("X-Internal-Service-Token") != "token-prueba-para-liquidacion-hu07" {
+			t.Errorf("faltan headers de integración interna")
+		}
+		_, _ = w.Write([]byte(`{"bet_id":"` + betID + `","status":"won","points_awarded":60.5,"points_total":80.5,"nueva":false}`))
+	}))
+	defer srv.Close()
+
+	resultado, err := NuevoPagosHTTP(srv.URL, "token-prueba-para-liquidacion-hu07").Liquidar(
+		context.Background(),
+		Liquidacion{BetID: betID, Resultado: "won", Puntos: 60.5, IdempotencyKey: key},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resultado.BetID != betID || resultado.Estado != "won" ||
+		resultado.PuntosOtorgados != 60.5 || resultado.PuntosTotales != 80.5 || resultado.Nueva {
+		t.Fatalf("respuesta inesperada: %+v", resultado)
+	}
+}
+
+func TestPagosHTTPLiquidarConflictoYErrorDeValidacion(t *testing.T) {
+	for _, caso := range []struct {
+		status int
+		want   error
+	}{
+		{http.StatusConflict, ErrPagosConflicto},
+		{http.StatusUnprocessableEntity, ErrPagosNoDisponible},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(caso.status)
+		}))
+		_, err := NuevoPagosHTTP(srv.URL, "token-prueba-para-liquidacion-hu07").Liquidar(
+			context.Background(),
+			Liquidacion{BetID: "bet", Resultado: "lost", IdempotencyKey: "key"},
+		)
+		srv.Close()
+		if !errors.Is(err, caso.want) {
+			t.Errorf("status %d: error=%v, esperado=%v", caso.status, err, caso.want)
+		}
 	}
 }
 

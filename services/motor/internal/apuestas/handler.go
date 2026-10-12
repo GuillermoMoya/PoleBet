@@ -62,6 +62,8 @@ func traducir(err error) (int, string) {
 		return http.StatusUnprocessableEntity, "El usuario no existe"
 	case errors.Is(err, ErrPagosNoDisponible):
 		return http.StatusBadGateway, "Pagos no esta disponible, intenta de nuevo"
+	case errors.Is(err, ErrPagosConflicto):
+		return http.StatusBadGateway, "Pagos detectó un conflicto de idempotencia"
 	default:
 		log.Printf("error inesperado al apostar: %v", err)
 		return http.StatusInternalServerError, "Error interno"

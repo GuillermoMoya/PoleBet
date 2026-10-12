@@ -24,6 +24,7 @@ import (
 	"github.com/arquisoft/motor/internal/health"
 	"github.com/arquisoft/motor/internal/httpx"
 	"github.com/arquisoft/motor/internal/ingest"
+	"github.com/arquisoft/motor/internal/liquidacion"
 	"github.com/arquisoft/motor/internal/mongodb"
 	"github.com/arquisoft/motor/internal/ws"
 )
@@ -61,7 +62,18 @@ func main() {
 	mux := http.NewServeMux()
 	health.Register(mux, db)
 	ws.Register(mux, hub, autenticador, origenes.Permite)
-	registrarApuestas(mux, db, cfg, autenticador) // HU-06
+	pagos := registrarApuestas(mux, db, cfg, autenticador) // HU-06
+	if pagosLiquidacion, ok := pagos.(liquidacion.Pagos); ok {
+		worker := liquidacion.NuevoWorker(
+			liquidacion.NuevoMongoStore(db.DB),
+			pagosLiquidacion,
+			cfg.VentanaObservacion,
+			hub,
+		)
+		go worker.Run(ctx)
+	} else {
+		log.Println("HU-07 desactivada: PAGOS_MOCK no puede liquidar apuestas reales")
+	}
 
 	ingest.Register(mux, db, hub, autenticador) // HU-04
 	// Aqui se registran los modulos de cada HU, p. ej.:
@@ -95,15 +107,15 @@ func main() {
 }
 
 // registrarApuestas arma HU-06 (POST /apuestas, solo jugadores). Con
-// PAGOS_MOCK=true usa un Pagos simulado (1000 tokens por usuario) mientras el
-// endpoint real de debito no exista; sin esa variable llama a Pagos por REST.
-func registrarApuestas(mux *http.ServeMux, db *mongodb.Conexion, cfg config.Config, a *auth.Autenticador) {
+// PAGOS_MOCK=true usa un Pagos simulado (1000 tokens por usuario); en modo
+// real comparte el cliente REST con el worker de liquidación HU-07.
+func registrarApuestas(mux *http.ServeMux, db *mongodb.Conexion, cfg config.Config, a *auth.Autenticador) apuestas.Pagos {
 	var pagos apuestas.Pagos
 	if os.Getenv("PAGOS_MOCK") == "true" {
 		log.Println("ATENCION: PAGOS_MOCK=true, los debitos son simulados")
 		pagos = apuestas.NuevoPagosMock(1000)
 	} else {
-		pagos = apuestas.NuevoPagosHTTP(cfg.PagosBaseURL)
+		pagos = apuestas.NuevoPagosHTTP(cfg.PagosBaseURL, cfg.InternalAPIToken)
 	}
 	svc := apuestas.NuevoServicio(
 		apuestas.NuevosMercadosMongo(db.DB),
@@ -117,4 +129,5 @@ func registrarApuestas(mux *http.ServeMux, db *mongodb.Conexion, cfg config.Conf
 			return s.UserID, ok
 		},
 	)
+	return pagos
 }

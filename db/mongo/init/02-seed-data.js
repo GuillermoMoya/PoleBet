@@ -167,6 +167,7 @@ const mercadoId = new ObjectId();
 db.mercados.insertOne({
   _id: mercadoId,
   carrera_id: carreraId,
+  tipo: 'driver_first_position',
   pregunta: '¿Quién irá primero al terminar la ventana?',
   opciones: ['Max Verstappen', 'Lando Norris', 'Charles Leclerc'],
   estado: 'abierto',
@@ -180,25 +181,6 @@ db.mercados.insertOne({
   liquidado_en: null
 });
 print('  ✅ Mercado insertado (abierto)');
-
-// ------------------------------------------------------------
-// 4. APUESTA DE CONTEXTO DE PRUEBA
-// ------------------------------------------------------------
-db.apuestas_contexto.insertOne({
-  apuesta_id: 'apuesta_seed_0001',
-  mercado_id: mercadoId,
-  usuario_id: 'usuario_seed_0001',
-  opcion: 'Max Verstappen',
-  monto: 100,
-  snapshot_evento: {
-    posiciones: ['Max Verstappen', 'Lando Norris', 'Charles Leclerc'],
-    lap: 1
-  },
-  creada_en: new Date(),
-  liquidada: false,
-  gano: null
-});
-print('  ✅ Apuesta de contexto insertada');
 
 print('');
 print('========================================');

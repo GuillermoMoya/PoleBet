@@ -33,6 +33,7 @@ var (
 	ErrSaldoInsuficiente = errors.New("saldo insuficiente")
 	ErrUsuarioNoExiste   = errors.New("el usuario no existe")
 	ErrPagosNoDisponible = errors.New("pagos no esta disponible")
+	ErrPagosConflicto    = errors.New("pagos rechazo la idempotencia")
 )
 
 // Estado del mercado, como lo define el validador de la coleccion "mercados".
