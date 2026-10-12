@@ -9,162 +9,95 @@ import (
 	"time"
 
 	"github.com/arquisoft/motor/internal/apuestas"
+	"github.com/arquisoft/motor/internal/mercados"
 )
 
 var instante = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
 
+// Atajos para las opciones del unico tipo de mercado.
+const (
+	si = mercados.OpcionSi
+	no = mercados.OpcionNo
+)
+
+// mercadoPrueba: mercado Si/No cerrado, con observacion de 1 minuto.
 func mercadoPrueba() Mercado {
 	return Mercado{
-		ID: "mercado-1", CarreraID: "carrera-1", Tipo: TipoPilotoPrimero,
-		Estado: "cerrado", Opciones: []string{"Max Verstappen", "Lando Norris"},
+		ID: "mercado-1", CarreraID: "carrera-1", Tipo: mercados.TipoCambioPosicion,
+		Estado: mercados.EstadoCerrado, Opciones: []string{si, no},
 		CierraEn: instante, ObservaHasta: instante.Add(time.Minute),
 	}
 }
 
+// datosPrueba: hubo un evento de posicion en la ventana, asi que gana "Sí".
 func datosPrueba() DatosResolucion {
-	return DatosResolucion{
-		Muestras: []MuestraPosicion{
-			{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 2},
-			{Timestamp: instante.Add(2 * time.Second), LeidoEn: instante.Add(2 * time.Second), DriverNumber: 1, Position: 1},
-			{Timestamp: instante.Add(2 * time.Second), LeidoEn: instante.Add(2 * time.Second), DriverNumber: 4, Position: 2},
-		},
-		Pilotos: []Piloto{
-			{DriverNumber: 1, FullName: "Max Verstappen", NameAcronym: "VER"},
-			{DriverNumber: 4, FullName: "Lando Norris", NameAcronym: "NOR"},
-		},
+	return DatosResolucion{HuboEventoPosicion: true, ReproduccionCubre: true}
+}
+
+// --- Resolver: regla Si/No ---
+
+func TestResolverSiHuboEventoDePosicion(t *testing.T) {
+	// Basta el evento: aunque no haya latido, el evento emitido en la ventana
+	// ya prueba que la reproduccion corria y que hubo un cambio.
+	for _, cubre := range []bool{true, false} {
+		got, err := Resolver(mercadoPrueba(), DatosResolucion{HuboEventoPosicion: true, ReproduccionCubre: cubre})
+		if err != nil || got != si {
+			t.Errorf("cubre=%v: resultado=%q err=%v, se esperaba %q", cubre, got, err, si)
+		}
 	}
 }
 
-func TestResolverPilotoPrimeroYLimitesInclusivos(t *testing.T) {
-	m := mercadoPrueba()
-	datos := datosPrueba()
-	datos.Muestras = append(datos.Muestras,
-		MuestraPosicion{Timestamp: m.CierraEn, LeidoEn: m.CierraEn, DriverNumber: 4, Position: 3},
-		MuestraPosicion{Timestamp: m.ObservaHasta, LeidoEn: m.ObservaHasta, DriverNumber: 1, Position: 1},
-	)
-	resultado, err := Resolver(m, datos)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resultado != "Max Verstappen" {
-		t.Fatalf("resultado %q", resultado)
+func TestResolverNoSinEventosConReproduccionViva(t *testing.T) {
+	got, err := Resolver(mercadoPrueba(), DatosResolucion{HuboEventoPosicion: false, ReproduccionCubre: true})
+	if err != nil || got != no {
+		t.Fatalf("resultado=%q err=%v, se esperaba %q", got, err, no)
 	}
 }
 
-func TestResolverNoAdivinaConDatosFaltantesInvalidosOAjenosALaVentana(t *testing.T) {
-	m := mercadoPrueba()
+// Sin eventos y sin prueba de que la reproduccion corria (nadie la lanzo, se
+// cayo o se reinicio en medio de la ventana): no se adivina "No".
+func TestResolverSinEventosNiReproduccionQuedaPendiente(t *testing.T) {
+	_, err := Resolver(mercadoPrueba(), DatosResolucion{})
+	if !errors.Is(err, ErrSinReproduccion) || !errors.Is(err, ErrDatosInsuficientes) {
+		t.Fatalf("error = %v, se esperaba %v", err, ErrSinReproduccion)
+	}
+}
+
+func TestResolverNoAdivinaConMercadoInvalido(t *testing.T) {
 	casos := []struct {
-		nombre string
-		datos  DatosResolucion
+		nombre  string
+		cambiar func(*Mercado)
+		err     error
 	}{
-		{"sin muestras", DatosResolucion{Pilotos: datosPrueba().Pilotos}},
-		{"falta un piloto del roster", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1}},
-			Pilotos:  datosPrueba().Pilotos,
-		}},
-		{"posición inválida", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 0, Position: 1}},
-			Pilotos: datosPrueba().Pilotos,
-		}},
-		{"muestras fuera de ventana", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(-time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1}},
-			Pilotos: datosPrueba().Pilotos,
-		}},
-		{"muestra leída tarde", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Minute + time.Second), DriverNumber: 1, Position: 1}},
-			Pilotos:  datosPrueba().Pilotos,
-		}},
-		{"líder ambiguo", DatosResolucion{
-			Muestras: []MuestraPosicion{
-				{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1},
-				{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 4, Position: 1},
-			},
-			Pilotos: datosPrueba().Pilotos,
-		}},
-		{"piloto sin opción", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 81, Position: 1}},
-		}},
-		{"nombre de piloto ambiguo", DatosResolucion{
-			Muestras: []MuestraPosicion{{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1}},
-			Pilotos: []Piloto{
-				{DriverNumber: 1, FullName: "Piloto", NameAcronym: "VER"},
-				{DriverNumber: 4, FullName: "Piloto", NameAcronym: "NOR"},
-			},
-		}},
+		{"otro tipo", func(m *Mercado) { m.Tipo = "driver_first_position" }, ErrTipoNoAdmitido},
+		{"sin tipo", func(m *Mercado) { m.Tipo = "" }, ErrTipoNoAdmitido},
+		{"aun abierto", func(m *Mercado) { m.Estado = mercados.EstadoAbierto }, ErrDatosInsuficientes},
+		{"ya liquidado", func(m *Mercado) { m.Estado = mercados.EstadoLiquidado }, ErrDatosInsuficientes},
+		{"sin cierra_en", func(m *Mercado) { m.CierraEn = time.Time{} }, ErrDatosInsuficientes},
+		{"ventana vacia", func(m *Mercado) { m.ObservaHasta = m.CierraEn }, ErrDatosInsuficientes},
+		{"opciones que no son Si/No", func(m *Mercado) { m.Opciones = []string{"VER", "NOR"} }, ErrDatosInsuficientes},
+		{"falta No", func(m *Mercado) { m.Opciones = []string{si} }, ErrDatosInsuficientes},
 	}
-	for _, caso := range casos {
-		t.Run(caso.nombre, func(t *testing.T) {
-			mercado := m
-			if caso.nombre == "nombre de piloto ambiguo" {
-				mercado.Opciones = []string{"Piloto", "Lando Norris"}
-			}
-			if _, err := Resolver(mercado, caso.datos); !errors.Is(err, ErrDatosInsuficientes) {
-				t.Fatalf("error = %v", err)
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			m := mercadoPrueba()
+			c.cambiar(&m)
+			if got, err := Resolver(m, datosPrueba()); !errors.Is(err, c.err) {
+				t.Fatalf("resultado=%q error=%v, se esperaba %v", got, err, c.err)
 			}
 		})
-	}
-	m.Tipo = "texto_libre"
-	if _, err := Resolver(m, datosPrueba()); !errors.Is(err, ErrTipoNoAdmitido) {
-		t.Fatalf("tipo no admitido produjo %v", err)
-	}
-}
-
-func TestResolverRechazaMuestrasConTimestampsIncompatibles(t *testing.T) {
-	m := mercadoPrueba()
-	datos := datosPrueba()
-	datos.Muestras[2].Timestamp = instante.Add(3 * time.Second)
-	datos.Muestras[2].LeidoEn = instante.Add(3 * time.Second)
-
-	if _, err := Resolver(m, datos); !errors.Is(err, ErrMuestrasIncompatibles) {
-		t.Fatalf("error = %v, se esperaba %v", err, ErrMuestrasIncompatibles)
-	}
-}
-
-func TestResolverUsaInstantaneaCompletaCoherenteMasReciente(t *testing.T) {
-	m := mercadoPrueba()
-	datos := datosPrueba()
-	// Estas filas posteriores son parciales y no se mezclan con la
-	// instantánea común completa de t+2s.
-	datos.Muestras = append(datos.Muestras,
-		MuestraPosicion{
-			Timestamp: instante.Add(4 * time.Second), LeidoEn: instante.Add(4 * time.Second),
-			DriverNumber: 1, Position: 2,
-		},
-	)
-
-	resultado, err := Resolver(m, datos)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resultado != "Max Verstappen" {
-		t.Fatalf("resultado %q", resultado)
-	}
-}
-
-func TestResolverRechazaEmpateEnInstantaneaCoherente(t *testing.T) {
-	m := mercadoPrueba()
-	datos := DatosResolucion{
-		Muestras: []MuestraPosicion{
-			{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1},
-			{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 4, Position: 1},
-		},
-		Pilotos: datosPrueba().Pilotos,
-	}
-
-	if _, err := Resolver(m, datos); !errors.Is(err, ErrClasificacionAmbigua) {
-		t.Fatalf("error = %v, se esperaba %v", err, ErrClasificacionAmbigua)
 	}
 }
 
 type storeFalso struct {
-	mu           sync.Mutex
-	mercado      Mercado
-	datos        DatosResolucion
-	contextos    []ContextoApuesta
-	retryEn      time.Time
-	reclamado    bool
-	finalizado   bool
-	errorUltimo  string
+	mu            sync.Mutex
+	mercado       Mercado
+	datos         DatosResolucion
+	contextos     []ContextoApuesta
+	retryEn       time.Time
+	reclamado     bool
+	finalizado    bool
+	errorUltimo   string
 	fallarGuardar bool
 	resumen       LiquidacionMercado
 }
@@ -241,10 +174,10 @@ func (s *storeFalso) Reintentar(_ context.Context, _ string, token, diagnostico 
 }
 
 type pagosFalso struct {
-	mu            sync.Mutex
-	efectos       map[string]float64
-	llamadas      int
-	aplicaciones  int
+	mu           sync.Mutex
+	efectos      map[string]float64
+	llamadas     int
+	aplicaciones int
 }
 
 func (p *pagosFalso) Liquidar(_ context.Context, l apuestas.Liquidacion) (apuestas.ResultadoLiquidacion, error) {
@@ -272,8 +205,8 @@ func TestLiquidacionMarcaGanadorYPerdedor(t *testing.T) {
 	s := &storeFalso{
 		mercado: mercadoPrueba(), datos: datosPrueba(),
 		contextos: []ContextoApuesta{
-			{ApuestaID: "bet-won", Opcion: "Max Verstappen", Monto: 100},
-			{ApuestaID: "bet-lost", Opcion: "Lando Norris", Monto: 20},
+			{ApuestaID: "bet-won", Opcion: si, Monto: 100},
+			{ApuestaID: "bet-lost", Opcion: no, Monto: 20},
 		},
 	}
 	p := &pagosFalso{efectos: map[string]float64{}}
@@ -286,7 +219,7 @@ func TestLiquidacionMarcaGanadorYPerdedor(t *testing.T) {
 		*s.contextos[1].Gano || s.contextos[1].Puntos != 0 {
 		t.Fatalf("resultado inesperado: %+v", s)
 	}
-	if s.resumen.Resultado != "Max Verstappen" || s.resumen.PuntosOtorgados != 60 {
+	if s.resumen.Resultado != si || s.resumen.PuntosOtorgados != 60 {
 		t.Fatalf("resumen de mercado incorrecto: %+v", s.resumen)
 	}
 	if len(p.efectos) != 2 || p.efectos["bet-settlement:bet-won"] != 60 || p.efectos["bet-settlement:bet-lost"] != 0 {
@@ -320,17 +253,13 @@ func TestContextoInvalidoNoSeClasificaComoPerdedor(t *testing.T) {
 	}
 }
 
+// Sin eventos y sin latido (p. ej. nadie lanzo la reproduccion): el mercado
+// no se liquida, no se llama a Pagos y el diagnostico explica por que.
 func TestResolverRechazadoNoSolicitaLiquidacionAFinanzas(t *testing.T) {
 	s := &storeFalso{
-		mercado: mercadoPrueba(),
-		datos: DatosResolucion{
-			Muestras: []MuestraPosicion{
-				{Timestamp: instante.Add(time.Second), LeidoEn: instante.Add(time.Second), DriverNumber: 1, Position: 1},
-				{Timestamp: instante.Add(2 * time.Second), LeidoEn: instante.Add(2 * time.Second), DriverNumber: 4, Position: 2},
-			},
-			Pilotos: datosPrueba().Pilotos,
-		},
-		contextos: []ContextoApuesta{{ApuestaID: "bet-won", Opcion: "Max Verstappen", Monto: 100}},
+		mercado:   mercadoPrueba(),
+		datos:     DatosResolucion{HuboEventoPosicion: false, ReproduccionCubre: false},
+		contextos: []ContextoApuesta{{ApuestaID: "bet-no", Opcion: no, Monto: 100}},
 	}
 	p := &pagosFalso{efectos: map[string]float64{}}
 	w := NuevoWorkerPrueba(s, p)
@@ -338,17 +267,41 @@ func TestResolverRechazadoNoSolicitaLiquidacionAFinanzas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s.finalizado || p.llamadas != 0 || s.errorUltimo == "" {
-		t.Fatalf("no debe liquidar ante timestamps incompatibles: mercado=%+v llamadas Pagos=%d", s, p.llamadas)
+		t.Fatalf("no debe dar \"No\" sin prueba de la reproduccion: mercado=%+v llamadas Pagos=%d", s, p.llamadas)
 	}
-	if !strings.Contains(s.errorUltimo, "timestamp común") {
+	if !strings.Contains(s.errorUltimo, "reproduccion") {
 		t.Fatalf("diagnóstico poco útil: %q", s.errorUltimo)
+	}
+}
+
+// Con la reproduccion viva toda la ventana y sin eventos, gana "No": quien
+// aposto "No" gana 10 + monto x 0,5 y quien aposto "Sí" pierde.
+func TestLiquidacionNoCuandoNoHuboCambios(t *testing.T) {
+	s := &storeFalso{
+		mercado: mercadoPrueba(),
+		datos:   DatosResolucion{HuboEventoPosicion: false, ReproduccionCubre: true},
+		contextos: []ContextoApuesta{
+			{ApuestaID: "bet-si", Opcion: si, Monto: 40},
+			{ApuestaID: "bet-no", Opcion: no, Monto: 40},
+		},
+	}
+	p := &pagosFalso{efectos: map[string]float64{}}
+	w := NuevoWorkerPrueba(s, p)
+	if err := w.Procesar(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !s.finalizado || s.resumen.Resultado != no || s.resumen.PuntosOtorgados != 30 {
+		t.Fatalf("resumen = %+v (finalizado=%v)", s.resumen, s.finalizado)
+	}
+	if p.efectos["bet-settlement:bet-no"] != 30 || p.efectos["bet-settlement:bet-si"] != 0 {
+		t.Fatalf("movimientos de Pagos: %+v", p.efectos)
 	}
 }
 
 func TestReintentoTrasFalloMongoNoDuplicaEfectosDePagos(t *testing.T) {
 	s := &storeFalso{
 		mercado: mercadoPrueba(), datos: datosPrueba(),
-		contextos: []ContextoApuesta{{ApuestaID: "bet-won", Opcion: "Max Verstappen", Monto: 100}},
+		contextos:     []ContextoApuesta{{ApuestaID: "bet-won", Opcion: si, Monto: 100}},
 		fallarGuardar: true,
 	}
 	p := &pagosFalso{efectos: map[string]float64{}}
@@ -371,7 +324,7 @@ func TestReintentoTrasFalloMongoNoDuplicaEfectosDePagos(t *testing.T) {
 func TestDosWorkersNoReclamanElMismoMercado(t *testing.T) {
 	s := &storeFalso{
 		mercado: mercadoPrueba(), datos: datosPrueba(),
-		contextos: []ContextoApuesta{{ApuestaID: "bet-won", Opcion: "Max Verstappen", Monto: 100}},
+		contextos: []ContextoApuesta{{ApuestaID: "bet-won", Opcion: si, Monto: 100}},
 	}
 	p := &pagosFalso{efectos: map[string]float64{}}
 	w := NuevoWorkerPrueba(s, p)

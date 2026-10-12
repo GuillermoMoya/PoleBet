@@ -43,6 +43,13 @@
   border-color: var(--accent-text);
 }
 
+/* Pregunta y opciones fijas del mercado Si/No: se ven, no se editan. */
+.campo input:read-only,
+.opcion input:read-only {
+  color: var(--text-muted);
+  cursor: default;
+}
+
 .opciones {
   display: flex;
   flex-direction: column;
@@ -60,16 +67,6 @@
 .opcion {
   display: flex;
   gap: 10px;
-}
-
-.opcion button,
-.agregar {
-  font-size: 15px;
-  padding: 0 16px;
-}
-
-.agregar {
-  align-self: flex-start;
 }
 
 .formulario button:disabled {

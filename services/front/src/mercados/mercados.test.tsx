@@ -9,7 +9,16 @@ import { WsProvider } from "../api/WsContexto";
 import { ClienteWs, type SocketLike } from "../api/ws";
 import App from "../App";
 import { AuthProvider, USUARIOS_SIMULADOS, type Usuario } from "../auth/AuthContext";
-import { desfaseDe, esMercado, faseDe, formatoReloj, reemplaza, segundosHasta, validarPeticion } from "./mercado";
+import {
+  desfaseDe,
+  esMercado,
+  faseDe,
+  formatoReloj,
+  PREGUNTA_CAMBIO_POSICION,
+  reemplaza,
+  segundosHasta,
+  validarPeticion,
+} from "./mercado";
 
 // ---------------------------------------------------------------------------
 // Datos
@@ -159,69 +168,46 @@ const mercadoAhora = (cambios: Partial<Mercado> = {}) => mercado(Date.now(), cam
 describe("HU-11 · panel del administrador", () => {
   const botonAbrir = () => screen.getByRole("button", { name: /Abrir mercado|Abriendo/ });
 
-  function llenar(pregunta: string, opciones: string[]) {
-    fireEvent.change(screen.getByLabelText("Pregunta"), { target: { value: pregunta } });
-    opciones.forEach((o, i) => {
-      if (i >= 2) fireEvent.click(screen.getByRole("button", { name: "Agregar opción" }));
-      fireEvent.change(screen.getByLabelText(`Opción ${i + 1}`), { target: { value: o } });
-    });
-  }
-
   it("sin mercados, lo dice", async () => {
     rutas = { "GET /mercados/actual": { status: 200, body: null } };
     abrir("/admin", USUARIOS_SIMULADOS.admin);
     expect(await screen.findByText("Todavía no se ha abierto ningún mercado.")).toBeInTheDocument();
   });
 
-  it("abre un mercado con pregunta y opciones y lo muestra abierto con su cuenta regresiva", async () => {
-    const creado = mercadoAhora({ pregunta: "¿Quién gana?", opciones: ["VER", "NOR", "LEC"] });
+  it("la pregunta y las opciones del mercado Sí/No vienen prellenadas y en solo lectura", async () => {
+    rutas = { "GET /mercados/actual": { status: 200, body: null } };
+    abrir("/admin", USUARIOS_SIMULADOS.admin);
+    await screen.findByText("Todavía no se ha abierto ningún mercado.");
+
+    expect(screen.getByLabelText("Pregunta")).toHaveValue(PREGUNTA_CAMBIO_POSICION);
+    expect(screen.getByLabelText("Pregunta")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Opción 1")).toHaveValue("Sí");
+    expect(screen.getByLabelText("Opción 2")).toHaveValue("No");
+    expect(screen.getByLabelText("Opción 1")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Opción 2")).toHaveAttribute("readonly");
+    expect(screen.queryByLabelText("Opción 3")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agregar opción" })).not.toBeInTheDocument();
+    expect(botonAbrir()).toBeEnabled();
+  });
+
+  it("abre el mercado Sí/No y lo muestra abierto con su cuenta regresiva", async () => {
+    const creado = mercadoAhora({ pregunta: PREGUNTA_CAMBIO_POSICION, opciones: ["Sí", "No"] });
     rutas = { "GET /mercados/actual": { status: 200, body: null }, "POST /mercados": { status: 201, body: creado } };
     abrir("/admin", USUARIOS_SIMULADOS.admin);
     await screen.findByText("Todavía no se ha abierto ningún mercado.");
 
-    llenar("  ¿Quién gana?  ", ["VER", "NOR", "LEC"]);
     fireEvent.click(botonAbrir());
 
     expect(await screen.findByRole("status")).toHaveTextContent("Mercado abierto");
     const [[, init]] = llamadas("POST", "/mercados");
-    expect(JSON.parse(init.body)).toEqual({ pregunta: "¿Quién gana?", opciones: ["VER", "NOR", "LEC"] });
+    // El contrato de POST /mercados no cambia: {pregunta, opciones}.
+    expect(JSON.parse(init.body)).toEqual({ pregunta: PREGUNTA_CAMBIO_POSICION, opciones: ["Sí", "No"] });
     expect(init.credentials).toBe("include"); // viaja la cookie de sesion con el rol admin
     expect(screen.getByTestId("fase-mercado")).toHaveTextContent("Abierto");
     expect(screen.getByTestId("cuenta-mercado")).toHaveTextContent(/Cierra en 0:(30|29)/);
-    // El formulario se limpia y no deja abrir otro mientras este siga abierto.
-    expect(screen.getByLabelText("Pregunta")).toHaveValue("");
+    // No deja abrir otro mientras este siga abierto.
     expect(screen.getByText(/Ya hay un mercado abierto/)).toBeInTheDocument();
     expect(botonAbrir()).toBeDisabled();
-  });
-
-  it("no deja enviar un mercado invalido y explica por que", async () => {
-    rutas = { "GET /mercados/actual": { status: 200, body: null } };
-    abrir("/admin", USUARIOS_SIMULADOS.admin);
-    await screen.findByText("Todavía no se ha abierto ningún mercado.");
-    expect(botonAbrir()).toBeDisabled();
-
-    llenar("¿Quién gana?", ["VER", "ver"]);
-    expect(screen.getByText('La opción "ver" está repetida')).toBeInTheDocument();
-    expect(botonAbrir()).toBeDisabled();
-
-    fireEvent.submit(botonAbrir().closest("form")!);
-    expect(llamadas("POST", "/mercados")).toHaveLength(0);
-  });
-
-  it("permite entre 2 y 10 opciones", async () => {
-    rutas = { "GET /mercados/actual": { status: 200, body: null } };
-    abrir("/admin", USUARIOS_SIMULADOS.admin);
-    await screen.findByText("Todavía no se ha abierto ningún mercado.");
-
-    expect(screen.getByRole("button", { name: "Quitar opción 1" })).toBeDisabled();
-    const agregar = screen.getByRole("button", { name: "Agregar opción" });
-    for (let i = 0; i < 8; i++) fireEvent.click(agregar);
-    expect(screen.getByLabelText("Opción 10")).toBeInTheDocument();
-    expect(agregar).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Quitar opción 10" }));
-    expect(screen.queryByLabelText("Opción 10")).not.toBeInTheDocument();
-    expect(agregar).toBeEnabled();
   });
 
   it("si el motor lo rechaza, muestra su mensaje", async () => {
@@ -232,11 +218,10 @@ describe("HU-11 · panel del administrador", () => {
     abrir("/admin", USUARIOS_SIMULADOS.admin);
     await screen.findByText("Todavía no se ha abierto ningún mercado.");
 
-    llenar("¿Quién gana?", ["VER", "NOR"]);
     fireEvent.click(botonAbrir());
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Ya hay un mercado abierto; espera a que cierre");
-    expect(screen.getByLabelText("Pregunta")).toHaveValue("¿Quién gana?"); // no se pierde lo escrito
+    expect(screen.getByLabelText("Pregunta")).toHaveValue(PREGUNTA_CAMBIO_POSICION);
   });
 
   it("ve como el servidor lo cierra: Abierto → Cerrado (en observacion)", async () => {
@@ -244,11 +229,12 @@ describe("HU-11 · panel del administrador", () => {
     rutas = { "GET /mercados/actual": { status: 200, body: m } };
     abrir("/admin", USUARIOS_SIMULADOS.admin);
     expect(await screen.findByTestId("fase-mercado")).toHaveTextContent("Abierto");
+    expect(botonAbrir()).toBeDisabled(); // hay uno abierto
 
     enviarWs("mercado_cerrado", { ...m, estado: "cerrado", ahora: iso(Date.now()) });
 
     expect(screen.getByTestId("fase-mercado")).toHaveTextContent("Cerrado · en observación");
-    expect(screen.getByRole("button", { name: "Abrir mercado" })).toBeDisabled(); // falta llenar el formulario
+    expect(screen.getByRole("button", { name: "Abrir mercado" })).toBeEnabled(); // ya se puede abrir el siguiente
     expect(screen.queryByText(/Ya hay un mercado abierto/)).not.toBeInTheDocument();
   });
 });

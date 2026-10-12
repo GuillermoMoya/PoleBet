@@ -13,12 +13,15 @@ import (
 type Servicio struct {
 	openf1  *OpenF1Client
 	eventos *mongo.Collection
+	// reproducciones guarda el latido de cada reproduccion (ver replay.go).
+	reproducciones *mongo.Collection
 }
 
 func NuevoServicio(db *mongo.Database) *Servicio {
 	return &Servicio{
-		openf1:  NuevoOpenF1Client(),
-		eventos: db.Collection("eventos_carrera"),
+		openf1:         NuevoOpenF1Client(),
+		eventos:        db.Collection("eventos_carrera"),
+		reproducciones: db.Collection("reproducciones"),
 	}
 }
 

@@ -67,23 +67,27 @@ Si falta una obligatoria, el motor no arranca y el log dice cuál falta.
 `PAGOS_MOCK=true` desactiva HU-07: una apuesta simulada no tiene registro
 financiero en PostgreSQL y no puede liquidarse en el ledger.
 
-## Liquidación HU-07 (demo limitada)
+## Liquidación HU-07
 
-El worker consulta cada dos segundos los mercados vencidos, cierra los que
-superaron `cierra_en`, espera hasta `observa_hasta` y solo resuelve
-`tipo: "driver_first_position"`. Filtra los eventos por `timestamp` de carrera
-en el intervalo inclusivo `[cierra_en, observa_hasta]` y exige que `leido_en`
-también esté dentro del intervalo para descartar cargas tardías. Solo combina
-posiciones con timestamp igual al milisegundo y elige el instante más reciente
-que tenga una posición válida para cada piloto del roster; no combina filas
-tomadas en tiempos incompatibles. La muestra no se considera una clasificación
-oficial final. Ante datos ausentes, ambiguos o una falla de servicio conserva
-el mercado cerrado, registra `liquidacion_error` en MongoDB y reintenta. Los
-contratos y límites completos están en
+Hay un solo tipo de mercado, Sí/No: **«¿Habrá algún cambio de posición durante
+la ventana de observación?»** (`tipo: "cambio_posicion"`). El worker
+(`internal/liquidacion`) consulta cada 2 s los mercados ya `cerrado` cuyo
+`observa_hasta` pasó (el cierre es de HU-11) y decide:
+
+- **Sí** si la reproducción de la carrera (`POST /ingest/replay`) emitió algún
+  evento de posición con `emitido_en` en `[cierra_en, observa_hasta]`.
+- **No** si no emitió ninguno y la reproducción estuvo viva toda la ventana
+  (latido en la colección `reproducciones`).
+- Si no hay eventos ni latido, el mercado queda `cerrado`, registra
+  `liquidacion_error` en MongoDB y reintenta. Lo mismo ante una falla de Pagos
+  o de MongoDB.
+
+`emitido_en` y el latido son horas reales que escribe la reproducción
+(`internal/ingest/replay.go`); el `timestamp` de los eventos es histórico y no
+se compara con la ventana. Para la demo: ingesta una vez, lanza
+`POST /ingest/replay` con `factor: 1` y déjala corriendo mientras se abren
+mercados. La regla completa, el contrato con Pagos y las decisiones están en
 [`../../documentation/hu-07-liquidacion-apuestas.md`](../../documentation/hu-07-liquidacion-apuestas.md).
-HU-04 no ingiere datos continuamente: durante la observación se debe invocar
-el endpoint existente `POST /ingest/openf1`; no hay un job automático que
-consuma OpenF1 en vivo.
 
 ## Mensajes del WebSocket
 
@@ -122,8 +126,8 @@ El `payload` de cada tipo lo define quien implementa la HU; documéntalo aquí c
   "payload": {
     "id": "6708f1c2a1b2c3d4e5f60718",
     "carrera_id": "2024_monza",
-    "pregunta": "¿Quién irá primero al terminar el minuto?",
-    "opciones": ["VER", "NOR", "LEC"],
+    "pregunta": "¿Habrá algún cambio de posición durante la ventana de observación?",
+    "opciones": ["Sí", "No"],
     "estado": "abierto",
     "abre_en": "2026-10-11T15:00:00Z",
     "cierra_en": "2026-10-11T15:00:30Z",
@@ -163,11 +167,12 @@ Por ahora el front no envía mensajes por el WebSocket: las acciones (apostar, a
 Cuerpo de `POST /mercados`:
 
 ```json
-{ "pregunta": "¿Quién irá primero al terminar el minuto?", "opciones": ["VER", "NOR", "LEC"], "carrera_id": "2024_monza" }
+{ "pregunta": "¿Habrá algún cambio de posición durante la ventana de observación?", "opciones": ["Sí", "No"], "carrera_id": "2024_monza" }
 ```
 
 - `carrera_id` es opcional: si no viene se usa la última carrera cargada en `carreras` (HU-04).
-- Pregunta de 1 a 200 caracteres; de 2 a 10 opciones, sin repetir (sin importar mayúsculas), de máximo 100 caracteres cada una (el largo de `bets.option` en Pagos).
+- El único tipo de mercado es Sí/No (`cambio_posicion`, lo fija el motor): las opciones deben ser **exactamente `["Sí", "No"]`**, en ese orden, o responde `400`. El front las envía prellenadas.
+- Pregunta de 1 a 200 caracteres. Su texto no se valida contra la regla: la liquidación se guía solo por el tipo.
 - Errores: `400` validación (el mensaje dice qué corregir), `404` carrera inexistente, `409` ya hay un mercado abierto, `422` no hay ninguna carrera cargada.
 
 Ciclo, siempre con el reloj del servidor:
@@ -182,7 +187,7 @@ Probarlo a mano (con el JWT de admin del README de la raíz en `$TOKEN`):
 
 ```bash
 curl -X POST http://localhost:8080/mercados -H "Cookie: session=$TOKEN" -H "Content-Type: application/json" \
-  -d '{"pregunta":"¿Quién irá primero?","opciones":["VER","NOR","LEC"]}'
+  -d '{"pregunta":"¿Habrá algún cambio de posición durante la ventana de observación?","opciones":["Sí","No"]}'
 curl http://localhost:8080/mercados/actual -H "Cookie: session=$TOKEN"
 ```
 

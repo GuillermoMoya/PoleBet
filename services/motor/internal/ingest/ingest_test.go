@@ -85,3 +85,33 @@ func TestOpenF1ClientPosiciones(t *testing.T) {
 		t.Fatalf("posiciones mal parseadas: %+v", pos)
 	}
 }
+
+// TestOffsetAleatorio: la reproduccion aleatoria empieza despues de las
+// primeras vueltas (OffsetMinimo) y deja carrera al final (MargenFinal).
+func TestOffsetAleatorio(t *testing.T) {
+	carrera := 90 * time.Minute
+	maximo := carrera - MargenFinal - OffsetMinimo // azar devuelve [0, maximo)
+
+	if got := OffsetAleatorio(carrera, func(int64) int64 { return 0 }); got != OffsetMinimo {
+		t.Errorf("con azar=0 empieza en %s, se esperaba %s", got, OffsetMinimo)
+	}
+	if got := OffsetAleatorio(carrera, func(n int64) int64 { return n - 1 }); got >= carrera-MargenFinal {
+		t.Errorf("con el mayor azar empieza en %s, debe ser antes de %s", got, carrera-MargenFinal)
+	}
+	var pedido int64
+	OffsetAleatorio(carrera, func(n int64) int64 { pedido = n; return 0 })
+	if time.Duration(pedido) != maximo {
+		t.Errorf("rango pedido al azar = %s, se esperaba %s", time.Duration(pedido), maximo)
+	}
+}
+
+// TestOffsetAleatorioCarreraCorta: si no alcanza (p. ej. el seed, de pocos
+// segundos), se reproduce desde el principio y no se llama al azar.
+func TestOffsetAleatorioCarreraCorta(t *testing.T) {
+	for _, d := range []time.Duration{0, time.Minute, OffsetMinimo + MargenFinal} {
+		got := OffsetAleatorio(d, func(int64) int64 { t.Fatal("no debe sortear"); return 0 })
+		if got != 0 {
+			t.Errorf("duracion %s: offset %s, se esperaba 0", d, got)
+		}
+	}
+}

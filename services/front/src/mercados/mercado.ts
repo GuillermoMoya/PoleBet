@@ -13,6 +13,15 @@ export const MAX_LARGO_OPCION = 100;
 export const MIN_OPCIONES = 2;
 export const MAX_OPCIONES = 10;
 
+// Unico tipo de mercado del prototipo: Si/No sobre la carrera. Copia de las
+// constantes del motor (internal/mercados/servicio.go), que es quien manda:
+// rechaza con 400 cualquier opcion distinta de exactamente ["Sí", "No"] y
+// liquida segun el tipo, nunca segun el texto de la pregunta. En /admin la
+// pregunta y las opciones vienen prellenadas y en solo lectura. Cuando haya
+// mas tipos, el admin elegira uno y cada tipo traera su pregunta fija.
+export const PREGUNTA_CAMBIO_POSICION = "¿Habrá algún cambio de posición durante la ventana de observación?";
+export const OPCIONES_SI_NO: readonly string[] = ["Sí", "No"];
+
 // Lo que ve el jugador:
 //   abierto     se puede apostar
 //   observacion cerro la ventana de apuestas; se observa la carrera 1 minuto

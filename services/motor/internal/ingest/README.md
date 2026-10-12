@@ -22,9 +22,22 @@ Cada evento guardado en `eventos_carrera` tiene la forma:
   "timestamp": "2024-09-01T12:07:46.509Z",
   "tipo": "posicion",
   "datos": { "driver_number": 4, "position": 1, "session_key": 9590 },
-  "leido_en": "2026-10-11T05:46:35.865Z"
+  "leido_en": "2026-10-11T05:46:35.865Z",
+  "emitido_en": "2026-10-12T15:00:41.207Z"
 }
 ```
+
+Las tres fechas significan cosas distintas:
+
+| Campo        | Qué es                                                        | Quién lo escribe |
+| ------------ | ------------------------------------------------------------- | ---------------- |
+| `timestamp`  | Momento del evento en la carrera (`date` de OpenF1). Histórico | Ingesta          |
+| `leido_en`   | Hora real en que se descargó de OpenF1                         | Ingesta          |
+| `emitido_en` | Hora real en que la reproducción lo emitió por WebSocket       | Replay           |
+
+`emitido_en` no existe hasta que el evento se reproduce, y se sobrescribe si
+se vuelve a reproducir. Es la fecha que usa la liquidación (HU-07): ver
+"Replay por WebSocket" más abajo.
 
 El campo `tipo` debe ser uno de los aceptados por el validador de la
 colección (ver `db/mongo/init/01-init-collections.js`):
@@ -53,7 +66,7 @@ no en el header `Authorization` (ver `internal/auth/auth.go`).
 | `openf1.go`      | Cliente HTTP a la API de OpenF1 (`/position`, `/drivers`, `/sessions`) |
 | `normalize.go`   | Tipos crudos de OpenF1 + normalización al esquema de `eventos_carrera` |
 | `servicio.go`    | Orquestador: OpenF1 → normalización → `InsertMany` en MongoDB          |
-| `replay.go`      | Lee eventos de MongoDB y los emite por un canal, respetando intervalos |
+| `replay.go`      | Lee eventos de MongoDB y los emite por un canal, respetando intervalos; marca `emitido_en`, escribe el latido y elige el offset |
 | `handler.go`     | Registro de rutas y handlers HTTP                                      |
 | `ingest_test.go` | Tests unitarios del cliente y la normalización                        |
 
@@ -123,19 +136,58 @@ docker exec -it arqui_mongo mongosh "mongodb://arqui:arqui_pass@localhost:27017/
 
 ## Replay por WebSocket
 
-Cuando HU-02 (login) y HU-05 (posiciones en vivo) estén listas, el replay se
-puede disparar así:
+La carrera es pasada: se descargó una vez y el replay la "vuelve a vivir".
+Se dispara así:
 
 ```bash
 curl -X POST http://localhost:8080/ingest/replay \
   -H "Cookie: session=$TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"carrera_id":"2024_monza","factor":10}'
+  -d '{"carrera_id":"2024_monza","factor":1}'
+```
+
+Respuesta (la reproducción sigue en segundo plano, máximo 30 min):
+
+```json
+{"estado":"reproduciendo","carrera_id":"2024_monza","factor":1,"offset_segundos":1834.2,"desde":"2024-09-01T13:33:12Z"}
 ```
 
 El motor lee de `eventos_carrera` en orden cronológico y difunde cada evento
-por WebSocket con `type: "evento_carrera"`. El campo `factor` controla la
-velocidad: `1` es tiempo real, `10` es 10× más rápido.
+por WebSocket con `type: "evento_carrera"`. Campos del cuerpo:
+
+- `factor`: velocidad. `1` es tiempo real, `10` es 10× más rápido. Para los
+  mercados Sí/No usa `1`: la ventana de observación son 60 s reales, que con
+  `factor: 10` serían 10 minutos de carrera (casi siempre "Sí").
+- `offset_segundos` (opcional): desde qué segundo de la carrera reproducir,
+  contado desde la primera posición. Si no viene, se elige **al azar** entre
+  10 min después del inicio (pasadas las primeras ~6 vueltas, para no
+  empezar con la parrilla de salida) y 15 min antes del final. Si la carrera
+  es más corta que eso (p. ej. el seed), se reproduce desde el principio.
+  Responde `400` si el offset está fuera de la carrera y `404` si la carrera
+  no tiene posiciones.
+
+Para que la liquidación (HU-07) pueda resolver mercados sobre una carrera
+pasada, el replay deja dos rastros con el reloj **real** del servidor:
+
+1. `emitido_en` en cada evento, justo antes de difundirlo. Si MongoDB falla
+   al marcarlo, el replay se corta (un evento emitido sin marca sería
+   invisible para la liquidación).
+2. Un **latido** en la colección `reproducciones` (un documento por carrera,
+   `_id = carrera_id`): `iniciada_en` al arrancar, `latido_en` cada 5 s y
+   `terminada_en` al acabar. Con eso la liquidación sabe si el replay estuvo
+   corriendo durante toda la ventana de un mercado y puede dar "No" cuando no
+   hubo cambios de posición.
+
+El evento de lista de pilotos no se reproduce: su `timestamp` es la hora de
+la ingesta, no un momento de la carrera, y dejaría el replay esperando al
+final.
+
+Verifica el latido en MongoDB:
+
+```powershell
+docker exec -it arqui_mongo mongosh "mongodb://arqui:arqui_pass@localhost:27017/apuestas_db?authSource=admin" `
+  --eval "printjson(db.reproducciones.findOne({_id:'2024_monza'}))"
+```
 
 ## Fuente de datos: OpenF1
 

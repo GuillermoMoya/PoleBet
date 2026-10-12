@@ -1,6 +1,10 @@
 package ingest
 
-import "time"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 // ---- Tipos que devuelve OpenF1 ----
 
@@ -32,12 +36,25 @@ type SesionOpenF1 struct {
 
 // ---- Tipo normalizado que va a MongoDB ----
 
+// EventoCarrera es un documento de la coleccion eventos_carrera. Tiene tres
+// fechas con significados distintos:
+//
+//   - Timestamp: momento del evento EN LA CARRERA (el `date` de OpenF1). Para
+//     una carrera pasada es historico (p. ej. 2024): sirve para ordenar y
+//     espaciar la reproduccion, no para compararlo con el reloj del servidor.
+//   - LeidoEn: hora real en que HU-04 lo descargo de OpenF1 (auditoria).
+//   - EmitidoEn: hora real en que la reproduccion (Replay) lo emitio por
+//     WebSocket. Es la que usa la liquidacion (HU-07) para saber si "paso
+//     algo" durante la ventana de observacion de un mercado. Vacia hasta que
+//     el evento se reproduce; se sobrescribe si se vuelve a reproducir.
 type EventoCarrera struct {
-	CarreraID string         `bson:"carrera_id" json:"carrera_id"`
-	Timestamp time.Time      `bson:"timestamp"  json:"timestamp"`
-	Tipo      string         `bson:"tipo"       json:"tipo"`
-	Datos     map[string]any `bson:"datos"      json:"datos"`
-	LeidoEn   time.Time      `bson:"leido_en"   json:"leido_en"`
+	ID        primitive.ObjectID `bson:"_id,omitempty"        json:"-"`
+	CarreraID string             `bson:"carrera_id"           json:"carrera_id"`
+	Timestamp time.Time          `bson:"timestamp"            json:"timestamp"`
+	Tipo      string             `bson:"tipo"                 json:"tipo"`
+	Datos     map[string]any     `bson:"datos"                json:"datos"`
+	LeidoEn   time.Time          `bson:"leido_en"             json:"leido_en"`
+	EmitidoEn time.Time          `bson:"emitido_en,omitempty" json:"emitido_en,omitzero"`
 }
 
 func NormalizarPosicion(carreraID string, p PosicionOpenF1) EventoCarrera {

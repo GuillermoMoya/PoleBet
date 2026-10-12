@@ -167,9 +167,11 @@ const mercadoId = new ObjectId();
 db.mercados.insertOne({
   _id: mercadoId,
   carrera_id: carreraId,
-  tipo: 'driver_first_position',
-  pregunta: '¿Quién irá primero al terminar la ventana?',
-  opciones: ['Max Verstappen', 'Lando Norris', 'Charles Leclerc'],
+  // Mismo tipo, pregunta y opciones que fija el motor al abrir un mercado
+  // (services/motor/internal/mercados/servicio.go).
+  tipo: 'cambio_posicion',
+  pregunta: '¿Habrá algún cambio de posición durante la ventana de observación?',
+  opciones: ['Sí', 'No'],
   estado: 'abierto',
   abre_en: ahora,
   cierra_en: new Date(ahora.getTime() + ventanaApuestas * 1000),

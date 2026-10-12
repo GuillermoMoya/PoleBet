@@ -77,17 +77,24 @@ Todo se configura en `.env` (copiado de `.env.example`). Variables clave:
 | `INTERNAL_API_TOKEN`         | Token compartido Motor→Pagos para operaciones internas |
 | `MONGO_USER` / `MONGO_PASSWORD` / `MONGO_DB` | Credenciales de MongoDB       |
 
-## Liquidación limitada HU-07
+## Liquidación HU-07
 
-La demo automática solo liquida mercados `driver_first_position` usando
-muestras OpenF1 persistidas dentro de la ventana del mercado. Requiere
-`PAGOS_MOCK=false`, `INTERNAL_API_TOKEN` idéntico en ambos servicios y
-apuestas debitadas en Pagos; las muestras históricas seed no se usan como
-resultado de un mercado actual. El alcance, contrato, regla temporal y límites
-están descritos en
+Hay un solo tipo de mercado, Sí/No: **«¿Habrá algún cambio de posición durante
+la ventana de observación?»**. Gana "Sí" si la reproducción de la carrera
+(`POST /ingest/replay`) emite algún evento de posición durante la ventana, y
+"No" si no emite ninguno mientras está corriendo. Para la demo:
+
+1. Ingesta la carrera una vez (`POST /ingest/openf1`, ver abajo).
+2. Lanza `POST /ingest/replay` con `"factor": 1` y déjala corriendo; empieza
+   en un punto aleatorio de la carrera, después de las primeras vueltas.
+3. Abre el mercado desde `/admin` y apuesta desde `/carrera`; 30 s + 60 s
+   después queda liquidado.
+
+Requiere `PAGOS_MOCK=false`, `INTERNAL_API_TOKEN` idéntico en ambos servicios
+y apuestas debitadas en Pagos. Si cambias `db/mongo/init`, recrea el volumen
+de MongoDB (`docker compose down -v`). La regla completa, el contrato con
+Pagos, las decisiones y los límites están en
 [`documentation/hu-07-liquidacion-apuestas.md`](documentation/hu-07-liquidacion-apuestas.md).
-La demo backend no agrega la apertura de mercados de HU-11 ni la ingesta
-continua de HU-04; consulta las limitaciones operativas del documento.
 
 ## Ingesta de datos de carrera (HU-04)
 

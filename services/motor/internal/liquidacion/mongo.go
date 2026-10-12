@@ -14,17 +14,22 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// mongoStore es el Store real. Solo LEE eventos_carrera y reproducciones (las
+// escribe la reproduccion, ingest/replay.go); en mercados y apuestas_contexto
+// escribe el lease, los reintentos y los resultados.
 type mongoStore struct {
-	mercados  *mongo.Collection
-	eventos   *mongo.Collection
-	contextos *mongo.Collection
+	mercados       *mongo.Collection
+	eventos        *mongo.Collection
+	contextos      *mongo.Collection
+	reproducciones *mongo.Collection
 }
 
 func NuevoMongoStore(db *mongo.Database) Store {
 	return &mongoStore{
-		mercados:  db.Collection("mercados"),
-		eventos:   db.Collection("eventos_carrera"),
-		contextos: db.Collection("apuestas_contexto"),
+		mercados:       db.Collection("mercados"),
+		eventos:        db.Collection("eventos_carrera"),
+		contextos:      db.Collection("apuestas_contexto"),
+		reproducciones: db.Collection("reproducciones"),
 	}
 }
 
@@ -48,7 +53,7 @@ func (d mercadoDoc) modelo() Mercado {
 
 func (s *mongoStore) MercadosVencidos(ctx context.Context, ahora time.Time) ([]Mercado, error) {
 	filtro := bson.M{
-		"estado": "cerrado",
+		"estado":        "cerrado",
 		"observa_hasta": bson.M{"$lte": ahora},
 		"$or": bson.A{
 			bson.M{"liquidacion_reintento_en": bson.M{"$exists": false}},
@@ -95,7 +100,7 @@ func (s *mongoStore) Reclamar(ctx context.Context, id string, ahora time.Time, d
 		},
 	}
 	resultado, err := s.mercados.UpdateOne(ctx, filtro, bson.M{"$set": bson.M{
-		"liquidacion_lease":      token,
+		"liquidacion_lease":       token,
 		"liquidacion_lease_hasta": ahora.Add(duracion),
 	}})
 	if err != nil {
@@ -104,75 +109,42 @@ func (s *mongoStore) Reclamar(ctx context.Context, id string, ahora time.Time, d
 	return token, resultado.ModifiedCount == 1, nil
 }
 
+// Datos arma lo que Resolver necesita para la ventana [cierra_en,
+// observa_hasta] del mercado (limites incluidos). Las dos consultas usan
+// fechas REALES escritas por la reproduccion (ingest/replay.go), nunca el
+// timestamp historico de los eventos.
 func (s *mongoStore) Datos(ctx context.Context, mercado Mercado) (DatosResolucion, error) {
 	datos := DatosResolucion{}
-	filtro := bson.M{
+
+	// 1. ¿Se emitio algun evento de posicion de esta carrera en la ventana?
+	// Basta con saber si hay uno (SetLimit(1)); usa el indice
+	// {carrera_id, tipo, emitido_en} de eventos_carrera.
+	n, err := s.eventos.CountDocuments(ctx, bson.M{
 		"carrera_id": mercado.CarreraID,
 		"tipo":       "posicion",
-		"timestamp":  bson.M{"$gte": mercado.CierraEn, "$lte": mercado.ObservaHasta},
-		"leido_en":   bson.M{"$gte": mercado.CierraEn, "$lte": mercado.ObservaHasta},
-	}
-	cursor, err := s.eventos.Find(ctx, filtro)
+		"emitido_en": bson.M{"$gte": mercado.CierraEn, "$lte": mercado.ObservaHasta},
+	}, options.Count().SetLimit(1))
 	if err != nil {
-		return datos, err
+		return datos, fmt.Errorf("contar eventos en la ventana: %w", err)
 	}
-	for cursor.Next(ctx) {
-		var evento struct {
-			Timestamp time.Time `bson:"timestamp"`
-			LeidoEn   time.Time `bson:"leido_en"`
-			Datos     bson.M    `bson:"datos"`
-		}
-		if err := cursor.Decode(&evento); err != nil {
-			_ = cursor.Close(ctx)
-			return datos, err
-		}
-		datos.Muestras = append(datos.Muestras, MuestraPosicion{
-			Timestamp:    evento.Timestamp,
-			LeidoEn:      evento.LeidoEn,
-			DriverNumber: entero(evento.Datos["driver_number"]),
-			Position:     entero(evento.Datos["position"]),
-			DriverName:   texto(evento.Datos["driver_name"]),
-		})
-	}
-	if err := cursor.Err(); err != nil {
-		_ = cursor.Close(ctx)
-		return datos, err
-	}
-	if err := cursor.Close(ctx); err != nil {
-		return datos, err
+	datos.HuboEventoPosicion = n > 0
+	if datos.HuboEventoPosicion {
+		return datos, nil // gana "Sí"; no hace falta mirar el latido
 	}
 
-	pilotoCursor, err := s.eventos.Find(ctx, bson.M{
-		"carrera_id": mercado.CarreraID,
-		"tipo":              "vuelta",
-		"datos.tipo_vuelta": "lista_pilotos",
-	}, options.Find().SetSort(bson.D{{Key: "timestamp", Value: -1}}))
+	// 2. Sin eventos: ¿la reproduccion estuvo viva TODA la ventana? Ya corria
+	// en cierra_en y su ultimo latido es posterior a observa_hasta. Si se
+	// reinicio en medio, su iniciada_en es posterior a cierra_en y no cuenta.
+	n, err = s.reproducciones.CountDocuments(ctx, bson.M{
+		"_id":         mercado.CarreraID,
+		"iniciada_en": bson.M{"$lte": mercado.CierraEn},
+		"latido_en":   bson.M{"$gte": mercado.ObservaHasta},
+	}, options.Count().SetLimit(1))
 	if err != nil {
-		return datos, err
+		return datos, fmt.Errorf("leer latido de la reproduccion: %w", err)
 	}
-	defer pilotoCursor.Close(ctx)
-	if pilotoCursor.Next(ctx) {
-		var evento struct {
-			Datos struct {
-				Pilotos []struct {
-					DriverNumber int    `bson:"driver_number"`
-					FullName     string `bson:"full_name"`
-					NameAcronym  string `bson:"name_acronym"`
-				} `bson:"pilotos"`
-			} `bson:"datos"`
-		}
-		if err := pilotoCursor.Decode(&evento); err != nil {
-			return datos, err
-		}
-		for _, piloto := range evento.Datos.Pilotos {
-			datos.Pilotos = append(datos.Pilotos, Piloto{
-				DriverNumber: piloto.DriverNumber,
-				FullName: piloto.FullName,
-				NameAcronym: piloto.NameAcronym,
-			})
-		}
-	}
-	return datos, pilotoCursor.Err()
+	datos.ReproduccionCubre = n > 0
+	return datos, nil
 }
 
 func (s *mongoStore) Contextos(ctx context.Context, mercadoID string) ([]ContextoApuesta, error) {
@@ -188,13 +160,13 @@ func (s *mongoStore) Contextos(ctx context.Context, mercadoID string) ([]Context
 	var resultados []ContextoApuesta
 	for cursor.Next(ctx) {
 		var contexto struct {
-			ApuestaID string `bson:"apuesta_id"`
-			UsuarioID string `bson:"usuario_id"`
-			Opcion string `bson:"opcion"`
-			Monto int64 `bson:"monto"`
-			Liquidada bool `bson:"liquidada"`
-			Gano *bool `bson:"gano"`
-			Puntos float64 `bson:"puntos_obtenidos"`
+			ApuestaID string  `bson:"apuesta_id"`
+			UsuarioID string  `bson:"usuario_id"`
+			Opcion    string  `bson:"opcion"`
+			Monto     int64   `bson:"monto"`
+			Liquidada bool    `bson:"liquidada"`
+			Gano      *bool   `bson:"gano"`
+			Puntos    float64 `bson:"puntos_obtenidos"`
 		}
 		if err := cursor.Decode(&contexto); err != nil {
 			return nil, err
@@ -222,8 +194,8 @@ func (s *mongoStore) GuardarResultadoApuesta(ctx context.Context, mercadoID stri
 		},
 	}
 	resultado, err := s.contextos.UpdateOne(ctx, filtro, bson.M{"$set": bson.M{
-		"liquidada": true,
-		"gano": gano,
+		"liquidada":        true,
+		"gano":             gano,
 		"puntos_obtenidos": puntos,
 	}})
 	if err != nil {
@@ -233,9 +205,9 @@ func (s *mongoStore) GuardarResultadoApuesta(ctx context.Context, mercadoID stri
 		return nil
 	}
 	var previo struct {
-		Liquidada bool `bson:"liquidada"`
-		Gano *bool `bson:"gano"`
-		Puntos float64 `bson:"puntos_obtenidos"`
+		Liquidada bool    `bson:"liquidada"`
+		Gano      *bool   `bson:"gano"`
+		Puntos    float64 `bson:"puntos_obtenidos"`
 	}
 	if err := s.contextos.FindOne(ctx, bson.M{"apuesta_id": contexto.ApuestaID, "mercado_id": oid}).Decode(&previo); err != nil {
 		return err
@@ -255,16 +227,16 @@ func (s *mongoStore) Finalizar(ctx context.Context, mercado Mercado, token strin
 		"_id": oid, "estado": "cerrado", "liquidacion_lease": token,
 	}, bson.M{
 		"$set": bson.M{
-			"estado": "liquidado",
-			"resultado": resultado.Resultado,
+			"estado":           "liquidado",
+			"resultado":        resultado.Resultado,
 			"puntos_otorgados": resultado.PuntosOtorgados,
-			"liquidado_en": ahora,
+			"liquidado_en":     ahora,
 		},
 		"$unset": bson.M{
-			"liquidacion_error": "",
+			"liquidacion_error":        "",
 			"liquidacion_reintento_en": "",
-			"liquidacion_lease": "",
-			"liquidacion_lease_hasta": "",
+			"liquidacion_lease":        "",
+			"liquidacion_lease_hasta":  "",
 		},
 	})
 	if err != nil {
@@ -285,11 +257,11 @@ func (s *mongoStore) Reintentar(ctx context.Context, id, token, diagnostico stri
 		"_id": oid, "estado": "cerrado", "liquidacion_lease": token,
 	}, bson.M{
 		"$set": bson.M{
-			"liquidacion_error": diagnostico,
+			"liquidacion_error":        diagnostico,
 			"liquidacion_reintento_en": siguiente,
 		},
 		"$unset": bson.M{
-			"liquidacion_lease": "",
+			"liquidacion_lease":       "",
 			"liquidacion_lease_hasta": "",
 		},
 	})
@@ -300,25 +272,4 @@ func (s *mongoStore) Reintentar(ctx context.Context, id, token, diagnostico stri
 		return errors.New("lease perdido antes de registrar el reintento")
 	}
 	return nil
-}
-
-func entero(v any) int {
-	switch n := v.(type) {
-	case int:
-		return n
-	case int32:
-		return int(n)
-	case int64:
-		return int(n)
-	case float64:
-		if n == float64(int(n)) {
-			return int(n)
-		}
-	}
-	return 0
-}
-
-func texto(v any) string {
-	s, _ := v.(string)
-	return s
 }

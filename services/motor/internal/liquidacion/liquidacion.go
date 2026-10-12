@@ -1,4 +1,34 @@
-// Package liquidacion orquesta la resolución limitada de HU-07.
+// Package liquidacion implementa HU-07: liquidar las apuestas de un mercado
+// cuando termina su ventana de observacion.
+//
+// Reparto de responsabilidades:
+//
+//   - El paquete mercados (HU-11) abre y CIERRA los mercados. Este paquete
+//     nunca cierra nada: su Worker consulta MongoDB cada 2 s por mercados ya
+//     "cerrado" con observa_hasta vencido y los liquida.
+//   - Resolver decide la opcion ganadora (funcion pura, sin BD).
+//   - Pagos (REST) suma los puntos y registra el movimiento; MongoDB guarda el
+//     resultado de cada apuesta y del mercado. Un lease en MongoDB evita que
+//     dos workers liquiden el mismo mercado, y las claves de idempotencia
+//     (bet-settlement:{id}) permiten reintentar sin duplicar efectos.
+//
+// Regla del unico tipo de mercado (mercados.TipoCambioPosicion), Si/No:
+//
+//		¿Habra algun cambio de posicion durante la ventana de observacion?
+//
+//	  - Gana "Sí" si la reproduccion de la carrera emitio al menos un evento de
+//	    posicion con emitido_en dentro de [cierra_en, observa_hasta] (ambos
+//	    limites incluidos). Cada fila de posicion de OpenF1 es un cambio de
+//	    posicion de un piloto; ver ingest/replay.go.
+//	  - Gana "No" si no hubo ninguno Y la reproduccion estuvo viva durante toda
+//	    la ventana (latido en la coleccion reproducciones).
+//	  - Si no hubo eventos y no hay prueba de que la reproduccion corria, no se
+//	    sabe quien gano: el mercado queda cerrado y reintentable, con el
+//	    diagnostico en liquidacion_error.
+//
+// Por que emitido_en y no timestamp: la carrera es pasada (OpenF1 se
+// descarga una vez) y timestamp es la hora historica del evento, que nunca
+// cae dentro de la ventana del mercado medida con el reloj del servidor.
 package liquidacion
 
 import (
@@ -6,21 +36,20 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/arquisoft/motor/internal/apuestas"
+	"github.com/arquisoft/motor/internal/mercados"
 	"github.com/arquisoft/motor/internal/ws"
 )
 
-const TipoPilotoPrimero = "driver_first_position"
-
 var (
-	ErrTipoNoAdmitido       = errors.New("tipo de mercado no admitido")
-	ErrDatosInsuficientes   = errors.New("datos de carrera insuficientes")
-	ErrMuestrasIncompatibles = fmt.Errorf("%w: no existe una instantánea completa con timestamp común para todos los pilotos", ErrDatosInsuficientes)
-	ErrClasificacionAmbigua = fmt.Errorf("%w: la instantánea contiene posiciones duplicadas o un líder ambiguo", ErrDatosInsuficientes)
-	ErrContextoInvalido     = errors.New("contexto de apuesta inválido")
+	ErrTipoNoAdmitido     = errors.New("tipo de mercado no admitido")
+	ErrDatosInsuficientes = errors.New("datos de carrera insuficientes")
+	// ErrSinReproduccion: no hubo eventos en la ventana, pero tampoco hay
+	// prueba de que la reproduccion estuviera corriendo; no se puede dar "No".
+	ErrSinReproduccion  = fmt.Errorf("%w: no se emitieron eventos de posicion en la ventana y no hay constancia de que la reproduccion estuviera corriendo durante toda la ventana", ErrDatosInsuficientes)
+	ErrContextoInvalido = errors.New("contexto de apuesta inválido")
 )
 
 type Mercado struct {
@@ -33,23 +62,16 @@ type Mercado struct {
 	ObservaHasta time.Time
 }
 
-type MuestraPosicion struct {
-	Timestamp    time.Time
-	LeidoEn      time.Time
-	DriverNumber int
-	Position     int
-	DriverName   string
-}
-
-type Piloto struct {
-	DriverNumber int
-	FullName     string
-	NameAcronym  string
-}
-
+// DatosResolucion es lo que Resolver necesita saber de la carrera durante la
+// ventana [cierra_en, observa_hasta] del mercado (lo arma Store.Datos).
 type DatosResolucion struct {
-	Muestras []MuestraPosicion
-	Pilotos  []Piloto
+	// HuboEventoPosicion: se emitio al menos un evento de posicion de la
+	// carrera del mercado con emitido_en dentro de la ventana.
+	HuboEventoPosicion bool
+	// ReproduccionCubre: la reproduccion de esa carrera ya corria en cierra_en
+	// (iniciada_en <= cierra_en) y seguia viva en observa_hasta
+	// (latido_en >= observa_hasta), sin reiniciarse en medio.
+	ReproduccionCubre bool
 }
 
 type ContextoApuesta struct {
@@ -218,8 +240,8 @@ func (w *Worker) procesarMercado(ctx context.Context, mercado Mercado, ahora tim
 		return liberarConError(fmt.Errorf("finalizar mercado en MongoDB: %w", err))
 	}
 	w.difundir(ws.TipoMercadoLiquidado, map[string]any{
-		"mercado_id": mercado.ID,
-		"resultado": resultado,
+		"mercado_id":       mercado.ID,
+		"resultado":        resultado,
 		"puntos_otorgados": totalPuntos,
 	})
 	return nil
@@ -231,118 +253,33 @@ func (w *Worker) difundir(tipo string, payload any) {
 	}
 }
 
+// Resolver decide la opcion ganadora de un mercado ya cerrado. Es una funcion
+// pura: todo lo que sabe de la carrera viene en datos (ver DatosResolucion y
+// la regla en el comentario del paquete). Se guia SOLO por mercado.Tipo,
+// nunca por el texto de la pregunta.
+//
+// Devuelve un error envuelto en ErrDatosInsuficientes cuando aun no se puede
+// decidir; el Worker lo registra y reintenta, sin tocar las apuestas.
 func Resolver(mercado Mercado, datos DatosResolucion) (string, error) {
-	if mercado.Tipo != TipoPilotoPrimero {
+	if mercado.Tipo != mercados.TipoCambioPosicion {
 		return "", ErrTipoNoAdmitido
 	}
-	if mercado.Estado != "cerrado" || len(mercado.Opciones) == 0 ||
+	if mercado.Estado != mercados.EstadoCerrado ||
 		mercado.CierraEn.IsZero() || !mercado.ObservaHasta.After(mercado.CierraEn) {
 		return "", ErrDatosInsuficientes
 	}
-	aliases := make(map[int][]string)
-	roster := make(map[int]bool)
-	for _, piloto := range datos.Pilotos {
-		if piloto.DriverNumber <= 0 {
-			continue
-		}
-		roster[piloto.DriverNumber] = true
-		aliases[piloto.DriverNumber] = append(
-			aliases[piloto.DriverNumber],
-			strings.TrimSpace(piloto.FullName),
-			strings.TrimSpace(piloto.NameAcronym),
-		)
+	// El motor solo abre este tipo con exactamente ["Sí", "No"]; si un
+	// documento viejo o editado a mano no las tiene, no se inventa un ganador.
+	if !contiene(mercado.Opciones, mercados.OpcionSi) || !contiene(mercado.Opciones, mercados.OpcionNo) {
+		return "", fmt.Errorf("%w: el mercado no tiene las opciones %q y %q", ErrDatosInsuficientes, mercados.OpcionSi, mercados.OpcionNo)
 	}
-
-	// MongoDB conserva los timestamps con precisión de milisegundos. Una
-	// clasificación solo combina filas del mismo milisegundo, nunca la
-	// última fila independiente de cada piloto.
-	snapshots := make(map[int64]map[int]int)
-	snapshotConflictivo := make(map[int64]bool)
-	nombrePorPiloto := make(map[int][]string)
-	for _, muestra := range datos.Muestras {
-		if muestra.Timestamp.Before(mercado.CierraEn) || muestra.Timestamp.After(mercado.ObservaHasta) {
-			continue
-		}
-		if muestra.LeidoEn.Before(mercado.CierraEn) || muestra.LeidoEn.After(mercado.ObservaHasta) {
-			continue
-		}
-		if muestra.DriverNumber <= 0 || muestra.Position <= 0 || muestra.Timestamp.IsZero() || muestra.LeidoEn.IsZero() {
-			continue
-		}
-		if !roster[muestra.DriverNumber] {
-			return "", ErrDatosInsuficientes
-		}
-		if nombre := strings.TrimSpace(muestra.DriverName); nombre != "" {
-			nombrePorPiloto[muestra.DriverNumber] = append(nombrePorPiloto[muestra.DriverNumber], nombre)
-		}
-		milisegundo := muestra.Timestamp.UTC().UnixMilli()
-		if snapshots[milisegundo] == nil {
-			snapshots[milisegundo] = make(map[int]int)
-		}
-		if previa, existe := snapshots[milisegundo][muestra.DriverNumber]; existe && previa != muestra.Position {
-			snapshotConflictivo[milisegundo] = true
-		} else {
-			snapshots[milisegundo][muestra.DriverNumber] = muestra.Position
-		}
+	if datos.HuboEventoPosicion {
+		return mercados.OpcionSi, nil
 	}
-
-	if len(roster) == 0 {
-		return "", ErrDatosInsuficientes
+	if datos.ReproduccionCubre {
+		return mercados.OpcionNo, nil
 	}
-	var timestampCoherente int64
-	hayInstantaneaCompleta := false
-	for timestamp, posiciones := range snapshots {
-		if len(posiciones) == len(roster) && (!hayInstantaneaCompleta || timestamp > timestampCoherente) {
-			timestampCoherente = timestamp
-			hayInstantaneaCompleta = true
-		}
-	}
-	if !hayInstantaneaCompleta {
-		return "", ErrMuestrasIncompatibles
-	}
-	if snapshotConflictivo[timestampCoherente] {
-		return "", ErrClasificacionAmbigua
-	}
-	posiciones := snapshots[timestampCoherente]
-	pilotoPorPosicion := make(map[int]int, len(posiciones))
-	for piloto, posicion := range posiciones {
-		if _, existe := pilotoPorPosicion[posicion]; existe {
-			return "", ErrClasificacionAmbigua
-		}
-		pilotoPorPosicion[posicion] = piloto
-	}
-	numero, hayLider := pilotoPorPosicion[1]
-	if !hayLider {
-		return "", ErrClasificacionAmbigua
-	}
-	var opciones []string
-	for _, opcion := range mercado.Opciones {
-		encontrados := make(map[int]bool)
-		for driverNumber, nombres := range aliases {
-			for _, nombre := range nombres {
-				if nombre != "" && strings.EqualFold(strings.TrimSpace(opcion), nombre) {
-					encontrados[driverNumber] = true
-				}
-			}
-		}
-		for driverNumber, nombres := range nombrePorPiloto {
-			for _, nombre := range nombres {
-				if nombre != "" && strings.EqualFold(strings.TrimSpace(opcion), nombre) {
-					encontrados[driverNumber] = true
-				}
-			}
-		}
-		if len(encontrados) > 1 {
-			return "", ErrDatosInsuficientes
-		}
-		if encontrados[numero] {
-			opciones = append(opciones, opcion)
-		}
-	}
-	if len(opciones) != 1 {
-		return "", ErrDatosInsuficientes
-	}
-	return opciones[0], nil
+	return "", ErrSinReproduccion
 }
 
 func puntosPorApuesta(monto int64) float64 {

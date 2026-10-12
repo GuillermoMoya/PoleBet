@@ -1,8 +1,12 @@
 // Pantalla /admin (solo administrador, HU-12): abrir mercados (HU-11).
 //
 // Criterios de aceptacion que cubre:
-//   - El admin escribe la pregunta y las opciones y abre el mercado; los
-//     jugadores lo reciben al instante por WebSocket (lo difunde el motor).
+//   - El admin abre el mercado; los jugadores lo reciben al instante por
+//     WebSocket (lo difunde el motor). En el prototipo hay un solo tipo de
+//     mercado (Si/No, "¿habra algun cambio de posicion...?"), asi que la
+//     pregunta y las opciones vienen prellenadas y en SOLO LECTURA. El
+//     contrato de POST /mercados no cambia ({pregunta, opciones}); el motor
+//     rechaza con 400 opciones distintas de ["Sí", "No"]. Ver mercado.ts.
 //   - Arriba ve el mercado actual con su estado y cuenta regresiva:
 //     Abierto → Cerrado (en observacion) → Liquidado.
 //   - El cierre lo decide el reloj del servidor (RNF-05): aqui solo se muestra.
@@ -13,7 +17,7 @@ import { useState, type FormEvent } from "react";
 import { ErrorHttp } from "../api/http";
 import { abrirMercado } from "../mercados/api";
 import EstadoMercado from "../mercados/EstadoMercado";
-import { faseDe, MAX_LARGO_OPCION, MAX_LARGO_PREGUNTA, MAX_OPCIONES, MIN_OPCIONES, validarPeticion } from "../mercados/mercado";
+import { faseDe, OPCIONES_SI_NO, PREGUNTA_CAMBIO_POSICION, validarPeticion } from "../mercados/mercado";
 import { useMercado, useRelojServidor } from "../mercados/useMercado";
 import estilos from "./Admin.module.css";
 
@@ -22,25 +26,22 @@ interface Mensaje {
   texto: string;
 }
 
-const VACIAS = () => Array.from({ length: MIN_OPCIONES }, () => "");
+// Pregunta y opciones fijas del unico tipo de mercado (solo lectura).
+const PREGUNTA = PREGUNTA_CAMBIO_POSICION;
+const OPCIONES = [...OPCIONES_SI_NO];
 
 export default function Admin() {
   const { mercado, cargando, error, desfaseMs, aplicar, recargar } = useMercado();
   const ahora = useRelojServidor(desfaseMs);
 
-  const [pregunta, setPregunta] = useState("");
-  const [opciones, setOpciones] = useState<string[]>(VACIAS);
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<Mensaje | null>(null);
 
   const hayAbierto = mercado !== null && faseDe(mercado, ahora) === "abierto";
-  const validacion = validarPeticion(pregunta, opciones);
+  // Se sigue validando con las mismas reglas del motor por si las constantes
+  // cambian algun dia; hoy siempre es valida.
+  const validacion = validarPeticion(PREGUNTA, OPCIONES);
   const puedeAbrir = validacion.ok && !enviando && !hayAbierto;
-
-  function cambiarOpcion(i: number, valor: string) {
-    setOpciones((o) => o.map((x, j) => (j === i ? valor : x)));
-    setMensaje(null);
-  }
 
   async function onSubmit(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -50,8 +51,6 @@ export default function Admin() {
     try {
       const nuevo = await abrirMercado(validacion.peticion);
       aplicar(nuevo); // el mensaje del WebSocket llega tambien; reemplaza() evita duplicar
-      setPregunta("");
-      setOpciones(VACIAS());
       setMensaje({ ok: true, texto: "Mercado abierto. Los jugadores conectados ya lo están viendo." });
     } catch (causa) {
       setMensaje({ ok: false, texto: causa instanceof ErrorHttp ? causa.message : "Ocurrió un error inesperado." });
@@ -91,64 +90,32 @@ export default function Admin() {
         <form className={estilos.formulario} onSubmit={onSubmit} noValidate>
           <div className={estilos.campo}>
             <label htmlFor="pregunta">Pregunta</label>
-            <input
-              id="pregunta"
-              value={pregunta}
-              maxLength={MAX_LARGO_PREGUNTA}
-              placeholder="¿Quién irá primero al terminar el minuto?"
-              onChange={(e) => {
-                setPregunta(e.target.value);
-                setMensaje(null);
-              }}
-            />
+            <input id="pregunta" value={PREGUNTA} readOnly />
           </div>
 
           <fieldset className={estilos.opciones}>
-            <legend>
-              Opciones ({MIN_OPCIONES} a {MAX_OPCIONES})
-            </legend>
-            {opciones.map((o, i) => (
-              <div key={i} className={estilos.opcion}>
+            <legend>Opciones</legend>
+            {OPCIONES.map((o, i) => (
+              <div key={o} className={estilos.opcion}>
                 <label htmlFor={`opcion-${i}`} className="solo-lectores">
                   Opción {i + 1}
                 </label>
-                <input
-                  id={`opcion-${i}`}
-                  value={o}
-                  maxLength={MAX_LARGO_OPCION}
-                  placeholder={`Opción ${i + 1}`}
-                  onChange={(e) => cambiarOpcion(i, e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="boton boton-secundario"
-                  aria-label={`Quitar opción ${i + 1}`}
-                  disabled={opciones.length <= MIN_OPCIONES}
-                  onClick={() => setOpciones((lista) => lista.filter((_, j) => j !== i))}
-                >
-                  Quitar
-                </button>
+                <input id={`opcion-${i}`} value={o} readOnly />
               </div>
             ))}
-            <button
-              type="button"
-              className={`boton boton-secundario ${estilos.agregar}`}
-              disabled={opciones.length >= MAX_OPCIONES}
-              onClick={() => setOpciones((lista) => [...lista, ""])}
-            >
-              Agregar opción
-            </button>
           </fieldset>
+
+          <p className="texto-secundario">
+            Gana «Sí» si la carrera registra al menos un cambio de posición durante la ventana de observación; si no, gana
+            «No».
+          </p>
 
           <p className="texto-secundario">
             Al abrirlo empieza la ventana de apuestas. El servidor lo cierra solo al terminarla y, tras la ventana de observación, lo
             liquida.
           </p>
 
-          {/* El error de validacion solo se muestra cuando ya se escribio algo. */}
-          {!validacion.ok && (pregunta !== "" || opciones.some((o) => o !== "")) && (
-            <p className={estilos.aviso}>{validacion.error}</p>
-          )}
+          {!validacion.ok && <p className={estilos.aviso}>{validacion.error}</p>}
           {hayAbierto && <p className={estilos.aviso}>Ya hay un mercado abierto: espera a que cierre para abrir otro.</p>}
 
           <button type="submit" className="boton" disabled={!puedeAbrir}>

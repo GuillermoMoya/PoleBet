@@ -215,7 +215,7 @@ func nuevo(t *testing.T) *entorno {
 }
 
 func peticionValida() Peticion {
-	return Peticion{Pregunta: "¿Quién irá primero al terminar el minuto?", Opciones: []string{"VER", "NOR", "LEC"}}
+	return Peticion{Pregunta: PreguntaCambioPosicion, Opciones: []string{OpcionSi, OpcionNo}}
 }
 
 // --- Abrir ---
@@ -246,8 +246,8 @@ func TestAbrirCreaMercadoAbiertoYLoDifunde(t *testing.T) {
 		t.Errorf("creado_por = %q", e.repo.mercados[0].CreadoPor)
 	}
 	// El validador de Mongo exige tipo y el liquidador solo resuelve este valor.
-	if e.repo.mercados[0].Tipo != TipoPilotoPrimero {
-		t.Errorf("tipo = %q, se esperaba %q", e.repo.mercados[0].Tipo, TipoPilotoPrimero)
+	if e.repo.mercados[0].Tipo != TipoCambioPosicion {
+		t.Errorf("tipo = %q, se esperaba %q", e.repo.mercados[0].Tipo, TipoCambioPosicion)
 	}
 	if e.ag.pendientes() != 1 || e.ag.tareas[0].d != 30*time.Second {
 		t.Errorf("se esperaba el cierre programado en 30 s: %+v", e.ag.tareas)
@@ -257,12 +257,12 @@ func TestAbrirCreaMercadoAbiertoYLoDifunde(t *testing.T) {
 func TestAbrirLimpiaEspacios(t *testing.T) {
 	e := nuevo(t)
 	v, err := e.svc.Abrir(context.Background(), admin, Peticion{
-		CarreraID: " 2023_spa ", Pregunta: "  ¿Quién gana?  ", Opciones: []string{" VER ", "NOR"},
+		CarreraID: " 2023_spa ", Pregunta: "  ¿Quién gana?  ", Opciones: []string{" Sí ", "No "},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.CarreraID != "2023_spa" || v.Pregunta != "¿Quién gana?" || v.Opciones[0] != "VER" {
+	if v.CarreraID != "2023_spa" || v.Pregunta != "¿Quién gana?" || v.Opciones[0] != OpcionSi || v.Opciones[1] != OpcionNo {
 		t.Errorf("vista = %+v", v)
 	}
 }
@@ -282,6 +282,11 @@ func TestAbrirValidaLaPeticion(t *testing.T) {
 		{"opcion vacia", Peticion{Pregunta: "¿?", Opciones: []string{"A", " "}}, "vacia"},
 		{"opcion larga", Peticion{Pregunta: "¿?", Opciones: []string{"A", largo(MaxLargoOpcion + 1)}}, "100"},
 		{"opcion repetida", Peticion{Pregunta: "¿?", Opciones: []string{"VER", "ver "}}, "repetida"},
+		// El unico tipo de mercado es Si/No: otras opciones nunca podrian ganar.
+		{"opciones que no son Si/No", Peticion{Pregunta: "¿?", Opciones: []string{"VER", "NOR"}}, "solo admite"},
+		{"Si/No en otro orden", Peticion{Pregunta: "¿?", Opciones: []string{OpcionNo, OpcionSi}}, "en ese orden"},
+		{"Si/No sin tilde", Peticion{Pregunta: "¿?", Opciones: []string{"Si", OpcionNo}}, "solo admite"},
+		{"Si/No con una tercera", Peticion{Pregunta: "¿?", Opciones: []string{OpcionSi, OpcionNo, "Tal vez"}}, "solo admite"},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
@@ -299,11 +304,9 @@ func TestAbrirValidaLaPeticion(t *testing.T) {
 
 func TestAbrirLimitesExactosSonValidos(t *testing.T) {
 	e := nuevo(t)
-	opciones := make([]string, MaxOpciones)
-	for i := range opciones {
-		opciones[i] = fmt.Sprintf("%d%s", i, strings.Repeat("x", MaxLargoOpcion-1))
-	}
-	_, err := e.svc.Abrir(context.Background(), admin, Peticion{Pregunta: strings.Repeat("p", MaxLargoPregunta), Opciones: opciones})
+	// La pregunta es editable en el contrato (el motor resuelve por el tipo,
+	// no por el texto), asi que su largo maximo sigue valiendo.
+	_, err := e.svc.Abrir(context.Background(), admin, Peticion{Pregunta: strings.Repeat("p", MaxLargoPregunta), Opciones: []string{OpcionSi, OpcionNo}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +565,7 @@ func pedir(h http.Handler, metodo, ruta, user, cuerpo string) *httptest.Response
 }
 
 func TestHandlerAbrir(t *testing.T) {
-	valido := `{"pregunta":"¿Quién irá primero?","opciones":["VER","NOR"]}`
+	valido := `{"pregunta":"¿Habrá algún cambio de posición?","opciones":["Sí","No"]}`
 	casos := []struct {
 		nombre, user, cuerpo string
 		status               int
@@ -573,7 +576,8 @@ func TestHandlerAbrir(t *testing.T) {
 		{"json roto", admin, `{`, 400, "cuerpo invalido"},
 		{"campo desconocido", admin, `{"pregunta":"x","opciones":["A","B"],"estado":"liquidado"}`, 400, "cuerpo invalido"},
 		{"validacion", admin, `{"pregunta":"x","opciones":["A"]}`, 400, "entre 2 y 10"},
-		{"carrera inexistente", admin, `{"carrera_id":"nada","pregunta":"x","opciones":["A","B"]}`, 404, "carrera no existe"},
+		{"no es Si/No", admin, `{"pregunta":"x","opciones":["VER","NOR"]}`, 400, "solo admite"},
+		{"carrera inexistente", admin, `{"carrera_id":"nada","pregunta":"x","opciones":["Sí","No"]}`, 404, "carrera no existe"},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
@@ -588,7 +592,7 @@ func TestHandlerAbrir(t *testing.T) {
 
 func TestHandlerAbrirDosVecesDa409(t *testing.T) {
 	h, _ := montar(t)
-	cuerpo := `{"pregunta":"¿Quién irá primero?","opciones":["VER","NOR"]}`
+	cuerpo := `{"pregunta":"¿Habrá algún cambio de posición?","opciones":["Sí","No"]}`
 	pedir(h, http.MethodPost, "/mercados", admin, cuerpo)
 	w := pedir(h, http.MethodPost, "/mercados", admin, cuerpo)
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Ya hay un mercado abierto") {
@@ -610,7 +614,7 @@ func TestHandlerActual(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil || w.Code != 200 {
 		t.Fatalf("status=%d err=%v cuerpo=%s", w.Code, err, w.Body.String())
 	}
-	if v.Estado != EstadoAbierto || len(v.Opciones) != 3 || v.CierraEn.IsZero() || v.Ahora.IsZero() {
+	if v.Estado != EstadoAbierto || len(v.Opciones) != 2 || v.CierraEn.IsZero() || v.Ahora.IsZero() {
 		t.Errorf("vista = %+v", v)
 	}
 }
