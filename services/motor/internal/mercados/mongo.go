@@ -41,6 +41,7 @@ func (r *repoMongo) AsegurarIndices(ctx context.Context) error {
 type docMercado struct {
 	ID           primitive.ObjectID `bson:"_id"`
 	CarreraID    string             `bson:"carrera_id"`
+	Tipo         string             `bson:"tipo"`
 	Pregunta     string             `bson:"pregunta"`
 	Opciones     []string           `bson:"opciones"`
 	Estado       string             `bson:"estado"`
@@ -54,6 +55,7 @@ func (d docMercado) aMercado() Mercado {
 	return Mercado{
 		ID:           d.ID.Hex(),
 		CarreraID:    d.CarreraID,
+		Tipo:         d.Tipo,
 		Pregunta:     d.Pregunta,
 		Opciones:     d.Opciones,
 		Estado:       d.Estado,
@@ -88,6 +90,7 @@ func (r *repoMongo) Insertar(ctx context.Context, m Mercado) (string, error) {
 	_, err := r.mercados.InsertOne(ctx, bson.M{
 		"_id":              id,
 		"carrera_id":       m.CarreraID,
+		"tipo":             m.Tipo,
 		"pregunta":         m.Pregunta,
 		"opciones":         m.Opciones,
 		"estado":           m.Estado,

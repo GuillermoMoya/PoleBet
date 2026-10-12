@@ -245,6 +245,10 @@ func TestAbrirCreaMercadoAbiertoYLoDifunde(t *testing.T) {
 	if e.repo.mercados[0].CreadoPor != admin {
 		t.Errorf("creado_por = %q", e.repo.mercados[0].CreadoPor)
 	}
+	// El validador de Mongo exige tipo y el liquidador solo resuelve este valor.
+	if e.repo.mercados[0].Tipo != TipoPilotoPrimero {
+		t.Errorf("tipo = %q, se esperaba %q", e.repo.mercados[0].Tipo, TipoPilotoPrimero)
+	}
 	if e.ag.pendientes() != 1 || e.ag.tareas[0].d != 30*time.Second {
 		t.Errorf("se esperaba el cierre programado en 30 s: %+v", e.ag.tareas)
 	}

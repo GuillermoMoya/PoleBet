@@ -38,6 +38,11 @@ const (
 	EstadoLiquidado = "liquidado"
 )
 
+// TipoPilotoPrimero es el unico tipo de mercado del prototipo («que piloto va
+// primero»). El validador de "mercados" exige el campo tipo y el liquidador
+// (HU-07) solo resuelve este valor; el admin no lo elige, lo fija Abrir.
+const TipoPilotoPrimero = "driver_first_position"
+
 // Limites de la peticion. MaxLargoOpcion coincide con bets.option
 // VARCHAR(100) de Pagos: una opcion mas larga no se podria apostar.
 const (
@@ -74,6 +79,7 @@ type Peticion struct {
 type Mercado struct {
 	ID           string
 	CarreraID    string
+	Tipo         string
 	Pregunta     string
 	Opciones     []string
 	Estado       string
@@ -208,6 +214,7 @@ func (s *Servicio) Abrir(ctx context.Context, adminID string, p Peticion) (Vista
 	abre := s.Ahora().UTC().Truncate(time.Millisecond)
 	m := Mercado{
 		CarreraID:    p.CarreraID,
+		Tipo:         TipoPilotoPrimero,
 		Pregunta:     p.Pregunta,
 		Opciones:     p.Opciones,
 		Estado:       EstadoAbierto,
