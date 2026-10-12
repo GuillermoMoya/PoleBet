@@ -67,8 +67,10 @@ type LiquidacionMercado struct {
 	PuntosOtorgados float64
 }
 
+// Store es el acceso a MongoDB del liquidador. No cierra mercados: de abierto a
+// cerrado se encarga solo el paquete mercados (HU-11); aqui se leen los que ya
+// estan cerrados y cuya observacion termino.
 type Store interface {
-	CerrarVencidos(context.Context, time.Time, time.Duration) ([]Mercado, error)
 	MercadosVencidos(context.Context, time.Time) ([]Mercado, error)
 	Reclamar(context.Context, string, time.Time, time.Duration) (string, bool, error)
 	Datos(context.Context, Mercado) (DatosResolucion, error)
@@ -83,22 +85,20 @@ type Pagos interface {
 }
 
 type Worker struct {
-	store       Store
-	pagos       Pagos
-	observacion time.Duration
-	intervalo   time.Duration
-	hub         *ws.Hub
-	ahora       func() time.Time
+	store     Store
+	pagos     Pagos
+	intervalo time.Duration
+	hub       *ws.Hub
+	ahora     func() time.Time
 }
 
-func NuevoWorker(store Store, pagos Pagos, observacion time.Duration, hub *ws.Hub) *Worker {
+func NuevoWorker(store Store, pagos Pagos, hub *ws.Hub) *Worker {
 	return &Worker{
-		store:       store,
-		pagos:       pagos,
-		observacion: observacion,
-		intervalo:   2 * time.Second,
-		hub:         hub,
-		ahora:       time.Now,
+		store:     store,
+		pagos:     pagos,
+		intervalo: 2 * time.Second,
+		hub:       hub,
+		ahora:     time.Now,
 	}
 }
 
@@ -117,20 +117,10 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
+// Procesar liquida los mercados que ya estan cerrados y cuya observacion
+// termino. El cierre (y su difusion mercado_cerrado) es de HU-11.
 func (w *Worker) Procesar(ctx context.Context) error {
 	ahora := w.ahora().UTC()
-	cerrados, err := w.store.CerrarVencidos(ctx, ahora, w.observacion)
-	if err != nil {
-		return fmt.Errorf("cerrar mercados vencidos: %w", err)
-	}
-	for _, mercado := range cerrados {
-		w.difundir(ws.TipoMercadoCerrado, map[string]any{
-			"mercado_id": mercado.ID,
-			"estado":     "cerrado",
-			"observa_hasta": mercado.ObservaHasta,
-		})
-	}
-
 	vencidos, err := w.store.MercadosVencidos(ctx, ahora)
 	if err != nil {
 		return fmt.Errorf("buscar mercados listos: %w", err)

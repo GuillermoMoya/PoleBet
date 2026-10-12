@@ -2,9 +2,11 @@
 
 ## Alcance de esta demo
 
-El Motor cierra un mercado abierto al alcanzar `cierra_en`, fija
-`observa_hasta = cierra_en + OBSERVATION_WINDOW_SECONDS` (60 segundos por
-defecto) e intenta liquidarlo automáticamente cuando termina esa ventana.
+El cierre de un mercado al alcanzar `cierra_en` es de HU-11 (paquete
+`mercados`), que también fija `observa_hasta = cierra_en +
+OBSERVATION_WINDOW_SECONDS` (60 segundos por defecto) al abrirlo. HU-07 no
+cierra nada: su worker consulta los mercados ya `cerrado` y los intenta
+liquidar automáticamente cuando termina esa ventana.
 El intervalo de observación es inclusivo en sus límites. Una muestra solo es
 elegible si tanto `timestamp` (momento del evento según OpenF1) como
 `leido_en` (momento en que el Motor la recibió y persistió) cumplen
@@ -92,8 +94,9 @@ permite recuperar mercados si el proceso cae mientras los reclama.
 - Un mercado o apuesta de prueba solo puede liquidarse si tiene un registro
   financiero real en Pagos. Los contextos semilla ficticios no equivalen a
   apuestas debitadas ni deben generar movimientos financieros.
-- El polling del Motor es periódico; el cierre/liquidación puede ocurrir
-  hasta un intervalo de polling después del límite de tiempo.
+- El worker de liquidación hace polling periódico (2 s); la liquidación puede
+  ocurrir hasta un intervalo de polling después de `observa_hasta`. El cierre
+  no depende de ese polling: lo hace el temporizador de HU-11.
 
 ## Requisitos de referencia
 

@@ -298,7 +298,7 @@ func (s *Servicio) programarFinObservacion(m Mercado) {
 			return
 		}
 		if s.Liquidador == nil {
-			log.Printf("mercados: termino la observacion de %s; liquidacion pendiente (HU-07)", m.ID)
+			log.Printf("mercados: termino la observacion de %s; lo liquida el worker de HU-07", m.ID)
 			return
 		}
 		ctx, cancel := context.WithTimeout(s.base, time.Minute)

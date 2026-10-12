@@ -169,10 +169,6 @@ type storeFalso struct {
 	resumen       LiquidacionMercado
 }
 
-func (s *storeFalso) CerrarVencidos(context.Context, time.Time, time.Duration) ([]Mercado, error) {
-	return nil, nil
-}
-
 func (s *storeFalso) MercadosVencidos(_ context.Context, ahora time.Time) ([]Mercado, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -267,7 +263,7 @@ func (p *pagosFalso) Liquidar(_ context.Context, l apuestas.Liquidacion) (apuest
 }
 
 func NuevoWorkerPrueba(s Store, p Pagos) *Worker {
-	w := NuevoWorker(s, p, time.Minute, nil)
+	w := NuevoWorker(s, p, nil)
 	w.ahora = func() time.Time { return instante.Add(time.Minute) }
 	return w
 }

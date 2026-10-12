@@ -20,7 +20,7 @@ Admin ──POST /mercados──▶ Motor ──guarda──▶ MongoDB (mercado
               cierra_en ────┼─ estado = cerrado
                             ├─ WS mercado_cerrado ──▶ todos los jugadores
                             │
-          observa_hasta ────┴─ Liquidador.Liquidar()  (HU-07)
+          observa_hasta ────┴─ el worker de HU-07 lo liquida
 ```
 
 1. El admin envía la pregunta y las opciones. El motor guarda el mercado con
@@ -29,8 +29,9 @@ Admin ──POST /mercados──▶ Motor ──guarda──▶ MongoDB (mercado
 2. Un temporizador del servidor lo pasa a `cerrado` en `cierra_en`. El cambio
    es una actualización condicional (`estado: abierto → cerrado`), así que no
    pasa nada si se intenta cerrar dos veces.
-3. Al terminar la observación se llama al `Liquidador`, que lo implementa HU-07.
-   Mientras HU-07 no exista, el motor solo lo deja en el log.
+3. Al terminar la observación, el worker de HU-07 consulta los mercados ya
+   `cerrado` y los liquida. HU-11 es el único que cierra mercados; HU-07 solo
+   reacciona a los cerrados.
 
 Las apuestas no dependen de que el temporizador llegue a tiempo: HU-06 también
 compara `cierra_en` con el reloj del servidor y rechaza con «Mercado cerrado».
@@ -103,6 +104,6 @@ regresiva que el servidor.
 
 ## Pendiente (otras HU)
 
-- **HU-07:** implementar `mercados.Liquidador`, asignarlo en
-  `registrarMercados` y difundir `mercado_liquidado`. El front ya lo escucha,
+- **HU-07:** hecho por el worker `liquidacion.Worker` (no usa el gancho
+  `mercados.Liquidador`), que difunde `mercado_liquidado`. El front ya lo escucha,
   con el mercado completo o solo con su `id`.

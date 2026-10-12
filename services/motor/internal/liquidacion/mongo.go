@@ -46,38 +46,6 @@ func (d mercadoDoc) modelo() Mercado {
 	}
 }
 
-func (s *mongoStore) CerrarVencidos(ctx context.Context, ahora time.Time, observacion time.Duration) ([]Mercado, error) {
-	cursor, err := s.mercados.Find(ctx, bson.M{"estado": "abierto", "cierra_en": bson.M{"$lte": ahora}})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-	var cerrados []Mercado
-	for cursor.Next(ctx) {
-		var doc mercadoDoc
-		if err := cursor.Decode(&doc); err != nil {
-			return nil, err
-		}
-		observaHasta := doc.CierraEn.Add(observacion)
-		resultado, err := s.mercados.UpdateOne(ctx,
-			bson.M{"_id": doc.ID, "estado": "abierto", "cierra_en": bson.M{"$lte": ahora}},
-			bson.M{"$set": bson.M{"estado": "cerrado", "observa_hasta": observaHasta}},
-		)
-		if err != nil {
-			return nil, err
-		}
-		if resultado.ModifiedCount == 1 {
-			doc.Estado = "cerrado"
-			doc.ObservaHasta = observaHasta
-			cerrados = append(cerrados, doc.modelo())
-		}
-	}
-	if err := cursor.Err(); err != nil {
-		return nil, err
-	}
-	return cerrados, nil
-}
-
 func (s *mongoStore) MercadosVencidos(ctx context.Context, ahora time.Time) ([]Mercado, error) {
 	filtro := bson.M{
 		"estado": "cerrado",

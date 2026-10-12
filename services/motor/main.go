@@ -70,7 +70,6 @@ func main() {
 		worker := liquidacion.NuevoWorker(
 			liquidacion.NuevoMongoStore(db.DB),
 			pagosLiquidacion,
-			cfg.VentanaObservacion,
 			hub,
 		)
 		go worker.Run(ctx)
@@ -112,9 +111,10 @@ func main() {
 // /mercados/actual con cualquier sesion) y retoma los mercados que quedaron
 // abiertos o en observacion antes de que el motor empiece a atender.
 //
-// HU-07: cuando exista la liquidacion, se asigna aqui:
-//
-//	svc.Liquidador = liquidacion.Nuevo(...)
+// Este paquete es el unico que cierra mercados. La liquidacion (HU-07) no usa
+// el gancho svc.Liquidador: su worker (liquidacion.Worker) consulta MongoDB
+// por los mercados ya cerrados cuya observacion termino, lo que ademas le
+// permite reintentar si Pagos o MongoDB fallan.
 func registrarMercados(ctx context.Context, mux *http.ServeMux, db *mongodb.Conexion, hub *ws.Hub, cfg config.Config, a *auth.Autenticador) {
 	repo := mercados.NuevoRepoMongo(db.DB)
 	svc := mercados.NuevoServicio(repo, hub, cfg.VentanaApuestas, cfg.VentanaObservacion)
