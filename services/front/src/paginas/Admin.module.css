@@ -1,0 +1,98 @@
+/* Pantalla /admin (HU-11). */
+
+.pagina {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  max-width: 760px;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campo label,
+.opciones legend {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.campo input,
+.opcion input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.campo input:focus-visible,
+.opcion input:focus-visible {
+  border-color: var(--accent-text);
+}
+
+.opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.opciones legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.opcion {
+  display: flex;
+  gap: 10px;
+}
+
+.opcion button,
+.agregar {
+  font-size: 15px;
+  padding: 0 16px;
+}
+
+.agregar {
+  align-self: flex-start;
+}
+
+.formulario button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.aviso {
+  margin: 0;
+  color: var(--warn);
+}
+
+.ok {
+  margin: 0;
+  color: var(--ok);
+}
+
+.error {
+  margin: 0;
+  color: var(--accent-text);
+}
+
+.error p {
+  margin: 0 0 12px;
+}

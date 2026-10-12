@@ -6,6 +6,7 @@
 //
 //   - GET /health : healthcheck (503 si MongoDB no responde)
 //   - GET /ws     : WebSocket para datos en vivo (exige la cookie de sesion)
+//   - POST /mercados, GET /mercados/actual : ciclo del mercado (HU-11)
 package main
 
 import (
@@ -25,6 +26,7 @@ import (
 	"github.com/arquisoft/motor/internal/httpx"
 	"github.com/arquisoft/motor/internal/ingest"
 	"github.com/arquisoft/motor/internal/liquidacion"
+	"github.com/arquisoft/motor/internal/mercados"
 	"github.com/arquisoft/motor/internal/mongodb"
 	"github.com/arquisoft/motor/internal/ws"
 )
@@ -62,7 +64,8 @@ func main() {
 	mux := http.NewServeMux()
 	health.Register(mux, db)
 	ws.Register(mux, hub, autenticador, origenes.Permite)
-	pagos := registrarApuestas(mux, db, cfg, autenticador) // HU-06
+	pagos := registrarApuestas(mux, db, cfg, autenticador)  // HU-06
+	registrarMercados(ctx, mux, db, hub, cfg, autenticador) // HU-11
 	if pagosLiquidacion, ok := pagos.(liquidacion.Pagos); ok {
 		worker := liquidacion.NuevoWorker(
 			liquidacion.NuevoMongoStore(db.DB),
@@ -77,8 +80,7 @@ func main() {
 
 	ingest.Register(mux, db, hub, autenticador) // HU-04
 	// Aqui se registran los modulos de cada HU, p. ej.:
-	//   posiciones.Register(mux, db.DB, hub)                 // HU-05
-	//   mercados.Register(mux, db.DB, hub, autenticador, cfg) // HU-11
+	//   posiciones.Register(mux, db.DB, hub) // HU-05
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,
@@ -104,6 +106,38 @@ func main() {
 	if err := db.Cerrar(ctxCierre); err != nil {
 		log.Printf("error al cerrar MongoDB: %v", err)
 	}
+}
+
+// registrarMercados arma HU-11 (POST /mercados solo admin, GET
+// /mercados/actual con cualquier sesion) y retoma los mercados que quedaron
+// abiertos o en observacion antes de que el motor empiece a atender.
+//
+// HU-07: cuando exista la liquidacion, se asigna aqui:
+//
+//	svc.Liquidador = liquidacion.Nuevo(...)
+func registrarMercados(ctx context.Context, mux *http.ServeMux, db *mongodb.Conexion, hub *ws.Hub, cfg config.Config, a *auth.Autenticador) {
+	repo := mercados.NuevoRepoMongo(db.DB)
+	svc := mercados.NuevoServicio(repo, hub, cfg.VentanaApuestas, cfg.VentanaObservacion)
+
+	if err := svc.Iniciar(ctx); err != nil {
+		log.Fatal(err)
+	}
+	// Despues de Iniciar: los abiertos vencidos ya se cerraron. Si falla (p. ej.
+	// datos viejos con dos abiertos) el motor sigue; Abrir igual lo impide.
+	ctxIndices, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := repo.AsegurarIndices(ctxIndices); err != nil {
+		log.Printf("ATENCION: no se pudo crear el indice de mercado abierto unico: %v", err)
+	}
+
+	mercados.Register(mux, svc,
+		func(h http.Handler) http.Handler { return a.ExigirRol(auth.RolAdmin, h) },
+		a.ExigirSesion,
+		func(r *http.Request) (string, bool) {
+			s, ok := auth.SesionDe(r.Context())
+			return s.UserID, ok
+		},
+	)
 }
 
 // registrarApuestas arma HU-06 (POST /apuestas, solo jugadores). Con

@@ -1,10 +1,10 @@
 // Pantalla /carrera: la carrera en vivo. Sigue el mockup "Carrera en vivo":
 // cabecera, posiciones a la izquierda (HU-05) y el mercado en el centro
-// (HU-06 y HU-08).
+// (HU-11 con el formulario de HU-06; el resultado es HU-08).
 
 import { MOSTRAR_LATENCIA } from "../api/config";
 import { useWs } from "../api/WsContexto";
-import DemoApuesta from "../apuestas/DemoApuesta.jsx";
+import MercadoJugador from "../mercados/MercadoJugador";
 import AvisoConexion from "../posiciones/AvisoConexion";
 import PanelPosiciones from "../posiciones/PanelPosiciones";
 import { usePosiciones } from "../posiciones/usePosiciones";
@@ -49,14 +49,9 @@ export default function Carrera() {
           <PanelPosiciones posiciones={posiciones} />
         </aside>
 
-        {/* Columna central: mercado activo */}
+        {/* Columna central: mercado activo (HU-11, con el formulario de HU-06) */}
         <div className={estilos.centro}>
-          {/* HU-06: por ahora la demo con datos simulados. Va en una tarjeta
-              clara porque el formulario aun no usa el tema oscuro.
-              PENDIENTE HU-06/HU-11: reemplazar por el mercado real. */}
-          <section className="tarjeta-clara">
-            <DemoApuesta />
-          </section>
+          <MercadoJugador />
 
           {/* PENDIENTE HU-08: resultado de la apuesta al liquidar el mercado. */}
           <section className="tarjeta">
