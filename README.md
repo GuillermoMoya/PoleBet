@@ -84,11 +84,41 @@ la ventana de observación?»**. Gana "Sí" si la reproducción de la carrera
 (`POST /ingest/replay`) emite algún evento de posición durante la ventana, y
 "No" si no emite ninguno mientras está corriendo. Para la demo:
 
-1. Ingesta la carrera una vez (`POST /ingest/openf1`, ver abajo).
+1. Ingesta la carrera una vez (`POST /ingest/openf1`).
 2. Lanza `POST /ingest/replay` con `"factor": 1` y déjala corriendo; empieza
    en un punto aleatorio de la carrera, después de las primeras vueltas.
 3. Abre el mercado desde `/admin` y apuesta desde `/carrera`; 30 s + 60 s
    después queda liquidado.
+
+Usa siempre `carrera_id` **`2024_monza`**: el mercado se abre sobre la última
+carrera de la colección `carreras`, que hoy solo llena el seed con ese id. Con
+otro id, el mercado no ve los eventos ni el latido y queda pendiente.
+
+Comandos exactos (PowerShell, con el stack levantado):
+
+```powershell
+# 1. JWT de admin (cookie session para el motor)
+$TOKEN = docker exec arqui_pagos python -c "import os, jwt, datetime; secret = os.environ['JWT_SECRET']; token = jwt.encode({'sub': '00000000-0000-0000-0000-000000000001', 'rol': 'admin', 'exp': datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)}, secret, algorithm='HS256'); print(token)"
+
+# 2. Ingesta de Monza 2024 (Race, session_key 9590) desde OpenF1, una sola vez
+Set-Content -Path body.json -Value '{"carrera_id":"2024_monza","session_key":9590}'
+curl.exe -X POST http://localhost:8080/ingest/openf1 `
+  -H "Cookie: session=$TOKEN" `
+  -H "Content-Type: application/json" `
+  --data-binary "@body.json"
+
+# 3. Reproduccion en tiempo real desde un punto aleatorio (dura hasta 30 min)
+Set-Content -Path body.json -Value '{"carrera_id":"2024_monza","factor":1}'
+curl.exe -X POST http://localhost:8080/ingest/replay `
+  -H "Cookie: session=$TOKEN" `
+  -H "Content-Type: application/json" `
+  --data-binary "@body.json"
+Remove-Item body.json
+```
+
+La respuesta de la reproducción incluye `offset_segundos` (dónde empezó).
+Para repetir exactamente la misma prueba, agrega `"offset_segundos": 1800`
+al cuerpo del paso 3.
 
 Requiere `PAGOS_MOCK=false`, `INTERNAL_API_TOKEN` idéntico en ambos servicios
 y apuestas debitadas en Pagos. Si cambias `db/mongo/init`, recrea el volumen

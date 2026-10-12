@@ -16,7 +16,7 @@ const (
 	TipoMercadoCerrado   = "mercado_cerrado"   // difusion (HU-11)
 	TipoMercadoLiquidado = "mercado_liquidado" // difusion (HU-07)
 	TipoResultadoApuesta = "resultado_apuesta" // a un usuario (HU-08)
-	
+
 	// HU-04: replay de una carrera. El front lo usa para pintar posiciones
 	// y para saber cuándo terminó la reproducción.
 	TipoEventoCarrera = "evento_carrera"

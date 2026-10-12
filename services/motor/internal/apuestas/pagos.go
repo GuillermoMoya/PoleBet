@@ -26,9 +26,9 @@ const RutaLiquidacion = "/internal/settlements"
 //	404     -> el usuario no existe
 //	otro    -> Pagos no esta disponible
 type PagosHTTP struct {
-	BaseURL   string
-	Token     string
-	Cliente   *http.Client
+	BaseURL string
+	Token   string
+	Cliente *http.Client
 }
 
 func NuevoPagosHTTP(baseURL, token string) *PagosHTTP {

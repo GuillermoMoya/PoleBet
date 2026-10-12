@@ -50,14 +50,14 @@ func (r *contextosMongo) Guardar(ctx context.Context, c Contexto) error {
 		return ErrMercadoNoExiste
 	}
 	_, err = r.col.InsertOne(ctx, bson.M{
-		"apuesta_id": c.ApuestaID,
-		"mercado_id": oid,
-		"usuario_id": c.UsuarioID,
-		"opcion":     c.Opcion,
-		"monto":      int32(c.Monto), // el validador exige int32
-		"creada_en":  c.CreadaEn,
-		"liquidada":  false,
-		"gano":       nil,
+		"apuesta_id":       c.ApuestaID,
+		"mercado_id":       oid,
+		"usuario_id":       c.UsuarioID,
+		"opcion":           c.Opcion,
+		"monto":            int32(c.Monto), // el validador exige int32
+		"creada_en":        c.CreadaEn,
+		"liquidada":        false,
+		"gano":             nil,
 		"puntos_obtenidos": float64(0),
 	})
 	// Reintento con la misma clave: el indice unico de apuesta_id ya la tiene.

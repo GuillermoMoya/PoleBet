@@ -48,12 +48,12 @@ func desde(getenv func(string) string) (Config, error) {
 	}
 
 	cfg := Config{
-		MongoURI:     requerida("MONGO_URI"),
-		MongoDB:      requerida("MONGO_DB"),
-		JWTSecret:    requerida("JWT_SECRET"),
-		PagosBaseURL: requerida("PAGOS_BASE_URL"),
+		MongoURI:         requerida("MONGO_URI"),
+		MongoDB:          requerida("MONGO_DB"),
+		JWTSecret:        requerida("JWT_SECRET"),
+		PagosBaseURL:     requerida("PAGOS_BASE_URL"),
 		InternalAPIToken: requerida("INTERNAL_API_TOKEN"),
-		HTTPPort:     opcional(getenv, "HTTP_PORT", "8080"),
+		HTTPPort:         opcional(getenv, "HTTP_PORT", "8080"),
 	}
 	origenes := separarLista(requerida("ALLOWED_ORIGINS"))
 
