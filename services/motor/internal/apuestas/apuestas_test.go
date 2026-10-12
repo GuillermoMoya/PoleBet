@@ -72,6 +72,40 @@ func TestApuestaValida(t *testing.T) {
 	}
 }
 
+func TestApuestaMontoMaximoInt32Aceptado(t *testing.T) {
+	svc, pagos, ctxs := nuevo(t, MontoMaximo)
+
+	apuesta, err := svc.Apostar(context.Background(), usuario, Peticion{"abierto", "VER", MontoMaximo}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if apuesta.Monto != MontoMaximo || pagos.Saldo(usuario) != 0 {
+		t.Fatalf("apuesta=%+v saldo=%d", apuesta, pagos.Saldo(usuario))
+	}
+	if len(ctxs.items) != 1 || ctxs.items[0].Monto != MontoMaximo {
+		t.Fatalf("contexto no conserva el monto máximo: %+v", ctxs.items)
+	}
+}
+
+func TestApuestaSobreMaximoInt32RechazadaAntesDelDebito(t *testing.T) {
+	saldo := MontoMaximo + 1
+	svc, pagos, ctxs := nuevo(t, saldo)
+
+	_, err := svc.Apostar(
+		context.Background(),
+		usuario,
+		Peticion{"abierto", "VER", MontoMaximo + 1},
+		"",
+	)
+	if !errors.Is(err, ErrPeticionInvalida) {
+		t.Fatalf("error = %v, se esperaba %v", err, ErrPeticionInvalida)
+	}
+	if len(pagos.Debitos) != 0 || pagos.Saldo(usuario) != saldo || len(ctxs.items) != 0 {
+		t.Fatalf("stake inválido produjo efectos: débitos=%d saldo=%d contextos=%d",
+			len(pagos.Debitos), pagos.Saldo(usuario), len(ctxs.items))
+	}
+}
+
 func TestRechazos(t *testing.T) {
 	svc, pagos, _ := nuevo(t, 50)
 	casos := []struct {

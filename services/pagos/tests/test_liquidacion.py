@@ -3,6 +3,8 @@ import threading
 import uuid
 from decimal import Decimal
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import select, update
 
 from app.db import SessionLocal
@@ -17,7 +19,7 @@ from app.models import (
     LedgerEntry,
     User,
 )
-from app.schemas.internal import BetSettlementIn
+from app.schemas.internal import MAX_BET_AMOUNT, BetDebitIn, BetSettlementIn
 from app.services.liquidacion import BetDebitData, debitar_apuesta, liquidar_apuesta
 from tests.conftest import requires_db
 
@@ -55,6 +57,22 @@ def test_settlement_contract_validates_result_points_and_unknown_fields():
         except ValueError:
             continue
         raise AssertionError(f"se aceptó contrato inválido: {invalid}")
+
+
+def test_internal_debit_enforces_mongo_int32_amount_limit():
+    request = {
+        "bet_id": str(uuid.uuid4()),
+        "user_id": str(uuid.uuid4()),
+        "market_id": "market-demo",
+        "option": "VER",
+        "idempotency_key": "bet-debit:maximum",
+    }
+
+    valid = BetDebitIn.model_validate({**request, "amount": MAX_BET_AMOUNT})
+    assert valid.amount == MAX_BET_AMOUNT
+
+    with pytest.raises(ValidationError):
+        BetDebitIn.model_validate({**request, "amount": MAX_BET_AMOUNT + 1})
 
 
 def _headers(clave=None, token=TOKEN):

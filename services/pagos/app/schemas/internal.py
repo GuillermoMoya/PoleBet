@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+MAX_BET_AMOUNT = 2**31 - 1
+
 
 class InternalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -15,7 +17,7 @@ class BetDebitIn(InternalRequest):
     user_id: uuid.UUID
     market_id: str = Field(min_length=1, max_length=64)
     option: str = Field(min_length=1, max_length=100)
-    amount: int = Field(gt=0)
+    amount: int = Field(gt=0, le=MAX_BET_AMOUNT)
     idempotency_key: str = Field(min_length=1, max_length=255)
 
 
