@@ -78,7 +78,7 @@ def make_user():
 
     from sqlalchemy import delete
 
-    from app.models import LedgerEntry
+    from app.models import Bet, LedgerEntry
 
     with SessionLocal() as db:
         # Primero sus movimientos del ledger (HU-03): tienen FK al usuario.
