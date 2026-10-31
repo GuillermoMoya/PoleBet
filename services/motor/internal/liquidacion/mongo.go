@@ -167,6 +167,12 @@ func (s *mongoStore) Contextos(ctx context.Context, mercadoID string) ([]Context
 			Liquidada bool    `bson:"liquidada"`
 			Gano      *bool   `bson:"gano"`
 			Puntos    float64 `bson:"puntos_obtenidos"`
+			// HU2-11: campos del modo torneo. Opcionales: un contexto viejo
+			// (individual) no los trae y se decodifican a su valor cero, que
+			// el Worker interpreta como apuesta individual.
+			Modo          string  `bson:"modo"`
+			Multiplicador float64 `bson:"multiplicador"`
+			EventoID      string  `bson:"evento_id"`
 		}
 		if err := cursor.Decode(&contexto); err != nil {
 			return nil, err
@@ -175,6 +181,7 @@ func (s *mongoStore) Contextos(ctx context.Context, mercadoID string) ([]Context
 			ApuestaID: contexto.ApuestaID, UsuarioID: contexto.UsuarioID,
 			Opcion: contexto.Opcion, Monto: contexto.Monto,
 			Liquidada: contexto.Liquidada, Gano: contexto.Gano, Puntos: contexto.Puntos,
+			Modo: contexto.Modo, Multiplicador: contexto.Multiplicador, EventoID: contexto.EventoID,
 		})
 	}
 	return resultados, cursor.Err()

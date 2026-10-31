@@ -82,7 +82,18 @@ type ContextoApuesta struct {
 	Liquidada bool
 	Gano      *bool
 	Puntos    float64
+
+	// HU2-11: campos del modo torneo. Son aditivos y opcionales: un contexto
+	// sin ellos (apuesta individual de HU-06/07) se liquida como siempre en
+	// tokens contra Pagos. Si Modo == "torneo", la apuesta se liquida en
+	// fichas (Redis) y no toca Pagos.
+	Modo          string  // "individual" (default) o "torneo"
+	Multiplicador float64 // multiplicador de la opcion, para pagar fichas
+	EventoID      string  // evento del torneo al que pertenece la apuesta
 }
+
+// ModoTorneo marca una apuesta que se liquida en fichas del torneo (HU2-11).
+const ModoTorneo = "torneo"
 
 type LiquidacionMercado struct {
 	Resultado       string
@@ -106,6 +117,27 @@ type Pagos interface {
 	Liquidar(context.Context, apuestas.Liquidacion) (apuestas.ResultadoLiquidacion, error)
 }
 
+// LiquidadorTorneo liquida una apuesta de torneo en fichas (Redis) en lugar de
+// tokens. Lo implementa fichas.Puente (HU2-11). Es opcional: si el Worker no
+// lo tiene, un contexto de torneo se registra como error y queda reintentable,
+// sin tocar Pagos (nunca se liquida una apuesta de torneo en tokens).
+//
+// Liquidar escribe el resultado de forma idempotente y devuelve las fichas del
+// jugador tras la liquidacion y su nuevo puesto, para difundir el resultado
+// (RF-17) y el ranking (RF-18). Difundir envia el ranking del evento.
+type LiquidadorTorneo interface {
+	Liquidar(ctx context.Context, eventoID, apuestaID string, gano bool, multiplicador float64) (ResultadoTorneo, error)
+	Difundir(ctx context.Context, eventoID string)
+}
+
+// ResultadoTorneo es lo que el Worker necesita saber tras liquidar una apuesta
+// de torneo para notificar al jugador (RF-17).
+type ResultadoTorneo struct {
+	FichasGanadas int64 // fichas pagadas por esta apuesta (0 si perdio)
+	FichasTotal   int64 // saldo de fichas del jugador tras liquidar
+	Puesto        int   // puesto del jugador en el ranking tras liquidar
+}
+
 // Notificador es lo que el Worker usa del hub de WebSocket. *ws.Hub lo
 // cumple; en las pruebas se reemplaza por un hub falso.
 type Notificador interface {
@@ -124,11 +156,20 @@ type ResultadoApuesta struct {
 	Gano            bool    `json:"gano"`
 	PuntosObtenidos float64 `json:"puntos_obtenidos"`
 	PuntajeTotal    float64 `json:"puntaje_total"` // points_total de Pagos
+
+	// HU2-11: campos del modo torneo. Se incluyen solo si Modo == "torneo",
+	// para que el front muestre fichas ganadas y el nuevo puesto (RF-17). En
+	// individual no aparecen (omitempty) y se mantienen puntos/saldo de HU-08.
+	Modo          string `json:"modo,omitempty"`
+	FichasGanadas int64  `json:"fichas_ganadas,omitempty"`
+	FichasTotal   int64  `json:"fichas_total,omitempty"`
+	Puesto        int    `json:"puesto,omitempty"`
 }
 
 type Worker struct {
 	store     Store
 	pagos     Pagos
+	torneo    LiquidadorTorneo // HU2-11: opcional, liquida apuestas de torneo en fichas
 	intervalo time.Duration
 	hub       Notificador
 	ahora     func() time.Time
@@ -142,6 +183,14 @@ func NuevoWorker(store Store, pagos Pagos, hub Notificador) *Worker {
 		hub:       hub,
 		ahora:     time.Now,
 	}
+}
+
+// ConLiquidadorTorneo habilita la liquidacion de apuestas de torneo en fichas
+// (HU2-11). Se llama despues de NuevoWorker, antes de Run. Devuelve el mismo
+// Worker para poder encadenar.
+func (w *Worker) ConLiquidadorTorneo(t LiquidadorTorneo) *Worker {
+	w.torneo = t
+	return w
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -211,7 +260,9 @@ func (w *Worker) procesarMercado(ctx context.Context, mercado Mercado, ahora tim
 		if contexto.ApuestaID == "" || contexto.Monto <= 0 || !contiene(mercado.Opciones, contexto.Opcion) {
 			return liberarConError(ErrContextoInvalido)
 		}
-		if contexto.Liquidada {
+		// La coherencia de puntos solo aplica a individuales: en torneo no hay
+		// puntos (se pagan fichas en Redis), por eso se omite la validacion.
+		if contexto.Liquidada && contexto.Modo != ModoTorneo {
 			gano := contexto.Opcion == resultado
 			puntos := 0.0
 			if gano {
@@ -224,12 +275,22 @@ func (w *Worker) procesarMercado(ctx context.Context, mercado Mercado, ahora tim
 	}
 
 	totalPuntos := 0.0
+	hayTorneo := false
 	for _, contexto := range contextos {
+		gano := contexto.Opcion == resultado
+		// HU2-11: las apuestas de torneo se liquidan en fichas (Redis), nunca
+		// en tokens. Se desvian aqui; el resto sigue el flujo individual.
+		if contexto.Modo == ModoTorneo {
+			hayTorneo = true
+			if err := w.liquidarTorneo(ctx, mercado, contexto, resultado, gano); err != nil {
+				return liberarConError(err)
+			}
+			continue
+		}
 		if contexto.Liquidada {
 			totalPuntos += contexto.Puntos
 			continue
 		}
-		gano := contexto.Opcion == resultado
 		puntos := 0.0
 		estado := "lost"
 		if gano {
@@ -266,6 +327,14 @@ func (w *Worker) procesarMercado(ctx context.Context, mercado Mercado, ahora tim
 		totalPuntos += respuesta.PuntosOtorgados
 	}
 
+	// HU2-11: tras liquidar las apuestas de torneo del mercado, difundir el
+	// ranking una sola vez con el estado final (RF-18, < 1 s).
+	if hayTorneo && w.torneo != nil {
+		if eventoID := eventoDe(contextos); eventoID != "" {
+			w.torneo.Difundir(ctx, eventoID)
+		}
+	}
+
 	resumen := LiquidacionMercado{Resultado: resultado, PuntosOtorgados: totalPuntos}
 	if err := w.store.Finalizar(ctx, mercado, token, resumen, w.ahora().UTC()); err != nil {
 		return liberarConError(fmt.Errorf("finalizar mercado en MongoDB: %w", err))
@@ -276,6 +345,54 @@ func (w *Worker) procesarMercado(ctx context.Context, mercado Mercado, ahora tim
 		"puntos_otorgados": totalPuntos,
 	})
 	return nil
+}
+
+// liquidarTorneo liquida una apuesta de torneo en fichas (HU2-11). Requiere un
+// LiquidadorTorneo configurado; sin el, la apuesta queda reintentable (nunca
+// se liquida un torneo en tokens). Marca el contexto como liquidado en MongoDB
+// (con puntos=0, porque el torneo no usa puntos) para que un reintento no la
+// reprocese, y notifica al jugador sus fichas y su nuevo puesto (RF-17).
+func (w *Worker) liquidarTorneo(ctx context.Context, mercado Mercado, contexto ContextoApuesta, resultado string, gano bool) error {
+	if w.torneo == nil {
+		return fmt.Errorf("apuesta de torneo %s sin liquidador de fichas configurado", contexto.ApuestaID)
+	}
+	if contexto.EventoID == "" {
+		return fmt.Errorf("apuesta de torneo %s sin evento asociado", contexto.ApuestaID)
+	}
+	res, err := w.torneo.Liquidar(ctx, contexto.EventoID, contexto.ApuestaID, gano, contexto.Multiplicador)
+	if err != nil {
+		return fmt.Errorf("liquidar apuesta de torneo en fichas: %w", err)
+	}
+	// Guardar en MongoDB marca la apuesta como liquidada. Puntos=0: en torneo
+	// no hay puntos. El almacen de fichas ya es idempotente, asi que un
+	// reintento no paga doble aunque este guardado falle y se repita.
+	if err := w.store.GuardarResultadoApuesta(ctx, mercado.ID, contexto, gano, 0); err != nil {
+		return fmt.Errorf("guardar resultado de apuesta de torneo: %w", err)
+	}
+	// RF-17: en torneo se envian fichas ganadas o perdidas y el nuevo puesto.
+	w.enviarA(contexto.UsuarioID, ws.TipoResultadoApuesta, ResultadoApuesta{
+		MercadoID:      mercado.ID,
+		ApuestaID:      contexto.ApuestaID,
+		Opcion:         contexto.Opcion,
+		OpcionGanadora: resultado,
+		Gano:           gano,
+		Modo:           ModoTorneo,
+		FichasGanadas:  res.FichasGanadas,
+		FichasTotal:    res.FichasTotal,
+		Puesto:         res.Puesto,
+	})
+	return nil
+}
+
+// eventoDe devuelve el evento del primer contexto de torneo. Todas las
+// apuestas de un mercado pertenecen al mismo evento.
+func eventoDe(contextos []ContextoApuesta) string {
+	for _, c := range contextos {
+		if c.Modo == ModoTorneo && c.EventoID != "" {
+			return c.EventoID
+		}
+	}
+	return ""
 }
 
 func (w *Worker) difundir(tipo string, payload any) {
