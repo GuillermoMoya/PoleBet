@@ -11,7 +11,7 @@ import { USUARIOS_SIMULADOS } from "../auth/usuariosPrueba";
 import { validarMonto } from "./api";
 
 // ---------------------------------------------------------------------------
-// Pagos simulado: responde segun "METODO /ruta". Una ruta puede tener una
+// Backend simulado: responde segun "METODO /ruta" (sin el prefijo /api o /api/pagos). Una ruta puede tener una
 // lista de respuestas, que se entregan en orden (para simular reintentos).
 // ---------------------------------------------------------------------------
 type Respuesta = { status: number; body?: unknown } | Error | Promise<{ status: number; body?: unknown }>;
@@ -21,7 +21,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   rutas = {};
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    const clave = `${init?.method ?? "GET"} ${url.replace(/^\/api\/pagos/, "")}`;
+    const clave = `${init?.method ?? "GET"} ${url.replace(/^\/api(\/pagos)?/, "")}`;
     const definida = rutas[clave];
     let r = (Array.isArray(definida) ? definida.shift() : definida) ?? { status: 404, body: {} };
     r = await r;
@@ -55,7 +55,7 @@ function compra(saldo: number, tokens: number) {
 }
 
 function compras() {
-  return fetchMock.mock.calls.filter(([url, init]) => url === "/api/pagos/billetera/compras" && init?.method === "POST");
+  return fetchMock.mock.calls.filter(([url, init]) => url === "/api/billetera/compras" && init?.method === "POST");
 }
 
 const clavesEnviadas = () => compras().map(([, init]) => (init.headers as Record<string, string>)["Idempotency-Key"]);

@@ -67,16 +67,6 @@ def tokens_por_monto(monto_cop: int) -> int:
     return monto_cop // cop_por_token
 
 
-def clave_ledger(user_id: uuid.UUID, clave: str) -> str:
-    """Clave que se guarda en ledger_entries.idempotency_key.
-
-    La columna es unica en toda la tabla y la comparten todos los movimientos
-    (compras, debitos, liquidaciones...). El prefijo evita que dos usuarios, o una compra
-    y una apuesta, choquen por usar la misma clave.
-    """
-    return f"compra:{user_id}:{clave}"
-
-
 def crear_billetera(db: Session, user_id: uuid.UUID) -> tuple[Wallet, bool]:
     """Crea la billetera con saldo 0. Devuelve (billetera, nueva).
 
@@ -104,10 +94,14 @@ def _reenvio(db: Session, previo: LedgerEntry, user_id: uuid.UUID, tokens: int) 
     return ResultadoCompra(movimiento=previo, saldo=saldo_de(db, user_id), nueva=False)
 
 
-def comprar_tokens(db: Session, user_id: uuid.UUID, monto_cop: int, clave: str) -> ResultadoCompra:
-    """Acredita los tokens de la compra, una sola vez por clave."""
+def comprar_tokens(db: Session, user_id: uuid.UUID, monto_cop: int, clave_guardada: str) -> ResultadoCompra:
+    """Acredita los tokens de la compra, una sola vez por clave.
+
+    clave_guardada va tal cual a ledger_entries.idempotency_key, que es unica
+    en toda la tabla. Por eso lleva el user_id: purchase:{user_id}:{clave del
+    front} (la arma el Orquestador), asi dos jugadores con la misma clave no chocan.
+    """
     tokens = tokens_por_monto(monto_cop)
-    clave_guardada = clave_ledger(user_id, clave)
 
     # 1. Reenvio normal (doble clic, reintento del navegador): ya existe.
     previo = db.scalar(select(LedgerEntry).where(LedgerEntry.idempotency_key == clave_guardada))
