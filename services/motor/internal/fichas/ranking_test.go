@@ -29,7 +29,8 @@ func TestConstruirRankingOrdenaPorFichas(t *testing.T) {
 }
 
 func TestConstruirRankingEmpatesCompartenPuesto(t *testing.T) {
-	// Tres empatados en el 1.º: comparten puesto 1 y el siguiente es el 4.º.
+	// Tres empatados en el 1.º: comparten puesto 1 y el siguiente es el 2.º
+	// (regla del enunciado: el siguiente grupo toma el puesto que sigue).
 	estados := []Estado{
 		{UsuarioID: "a", Fichas: 1000},
 		{UsuarioID: "b", Fichas: 1000},
@@ -42,8 +43,8 @@ func TestConstruirRankingEmpatesCompartenPuesto(t *testing.T) {
 			t.Fatalf("fila %d deberia ser puesto 1: %+v", i, r.Filas[i])
 		}
 	}
-	if r.Filas[3].Puesto != 4 {
-		t.Fatalf("tras 3 empates en 1.º, el siguiente es el 4.º, tengo %d", r.Filas[3].Puesto)
+	if r.Filas[3].Puesto != 2 {
+		t.Fatalf("tras 3 empates en 1.º, el siguiente es el 2.º, tengo %d", r.Filas[3].Puesto)
 	}
 }
 

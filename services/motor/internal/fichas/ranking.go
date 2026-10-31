@@ -51,8 +51,10 @@ func minApostadoPara(fichasIniciales int64, pct float64) int64 {
 // calcula el puesto, el avance y la elegibilidad de cada uno. Es una funcion
 // pura: no toca Redis ni el reloj, para poder probarla directamente.
 //
-// El puesto refleja empates: dos jugadores con las mismas fichas comparten
-// puesto y el siguiente salta (1,1,3), que es como HU2-12 reparte el botin.
+// El puesto refleja empates con la regla del enunciado: cada grupo empatado
+// ocupa un solo puesto y el siguiente grupo toma el puesto que sigue (puesto
+// denso: 1,1,1,2). "Si tres empatan en el 1.º ... el siguiente jugador es el
+// 2.º". Es la misma regla con la que HU2-12 reparte el botin.
 // El desempate visual es por usuario_id, solo para que el orden sea estable.
 func ConstruirRanking(eventoID string, estados []Estado, fichasIniciales int64, minWagerPct float64, botin int64, ahora time.Time) Ranking {
 	minApostado := minApostadoPara(fichasIniciales, minWagerPct)
@@ -77,13 +79,16 @@ func ConstruirRanking(eventoID string, estados []Estado, fichasIniciales int64, 
 		)
 	})
 
-	// Puesto con empates: mismo numero de fichas => mismo puesto; el siguiente
-	// grupo toma el puesto que sigue por cantidad (1,1,3), como el reparto.
+	// Puesto denso: mismo numero de fichas => mismo puesto; el siguiente grupo
+	// toma el puesto inmediato (1,1,1,2), como el reparto de HU2-12.
 	for i := range filas {
-		if i > 0 && filas[i].Fichas == filas[i-1].Fichas {
+		switch {
+		case i == 0:
+			filas[i].Puesto = 1
+		case filas[i].Fichas == filas[i-1].Fichas:
 			filas[i].Puesto = filas[i-1].Puesto
-		} else {
-			filas[i].Puesto = i + 1
+		default:
+			filas[i].Puesto = filas[i-1].Puesto + 1
 		}
 	}
 

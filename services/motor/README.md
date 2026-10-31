@@ -305,7 +305,7 @@ WebSocket (RF-18, cambio en pantalla en < 1 s, RNF-13):
 
 | Campo | Qué es |
 | --- | --- |
-| `puesto` | lo comparten los empatados (p. ej. `1,1,3`), igual que el reparto del botín (HU2-12) |
+| `puesto` | lo comparten los empatados y el siguiente grupo toma el puesto que sigue (p. ej. `1,1,2`), igual que el reparto del botín (HU2-12) |
 | `fichas` | saldo actual de fichas del jugador |
 | `apostado` | fichas comprometidas en apuestas; no baja aunque la apuesta pierda |
 | `avance_pct` | `apostado` frente al mínimo para ser elegible (0..100, topado en 100) |

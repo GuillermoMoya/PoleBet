@@ -93,9 +93,10 @@ idempotencia por `idempotency_key` que Pagos usa para los tokens.
 
 ### Ranking y barra de avance (RF-18, RNF-13)
 
-El ranking ordena a los inscritos por fichas (mayor a menor). Los empates
-comparten puesto y el siguiente grupo salta (1,1,3), igual que reparte el botín
-HU2-12. La barra de avance compara las fichas apostadas con el mínimo
+El ranking ordena a los inscritos por fichas (mayor a menor). Cada grupo
+empatado ocupa un solo puesto y el siguiente grupo toma el puesto que sigue
+(1,1,1,2), como dice el enunciado: «si tres empatan en el 1.º, … el siguiente
+jugador es el 2.º». Es la misma regla con la que reparte el botín HU2-12. La barra de avance compara las fichas apostadas con el mínimo
 (`EVENT_MIN_WAGER_PCT` de las fichas iniciales, 50 % por defecto, redondeado
 hacia arriba): al alcanzarlo el jugador es `elegible` para el reparto. Se
 difunde por WebSocket con el mismo patrón que la tabla de posiciones de HU-05
@@ -202,7 +203,8 @@ Pruebas nuevas (`internal/fichas`):
   vez aun con reintento; rechazo por contenido distinto; rechazo sin fichas;
   liquidación que paga `monto × multiplicador` y no paga doble; perdedora que no
   devuelve nada; liquidar sin reserva; torneo no activo.
-- `ranking_test.go`: orden por fichas; empates que comparten puesto (1,1,3);
+- `ranking_test.go`: orden por fichas; empates que comparten puesto y el
+  siguiente grupo toma el puesto que sigue (1,1,1,2);
   elegibilidad y barra de avance (0 %, 50 %, 100 % y tope); redondeo hacia
   arriba del mínimo.
 

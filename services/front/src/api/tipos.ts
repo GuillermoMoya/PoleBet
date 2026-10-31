@@ -106,7 +106,7 @@ export interface ResultadoApuesta {
 // apostado (RF-18, RNF-13: cambia en menos de 1 s).
 
 export interface FilaRanking {
-  puesto: number; // comparte numero con los empatados (1,1,3)
+  puesto: number; // los empatados comparten numero y el siguiente grupo sigue (1,1,2)
   usuario_id: string;
   fichas: number; // saldo actual de fichas
   apostado: number; // fichas comprometidas en apuestas (base de la barra)
