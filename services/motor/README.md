@@ -319,6 +319,13 @@ y `puesto` en lugar de puntos (RF-17).
 Detalle completo, claves de Redis y decisiones en
 [`../../documentation/hu2-11-fichas-ranking.md`](../../documentation/hu2-11-fichas-ranking.md).
 
+**Cierre del torneo (HU2-12).** `Almacen.CerrarTorneo(evento, pagos)` lee las
+fichas finales de Redis, las envía a Pagos (`POST /internal/events/{id}/close`,
+cliente `fichas.PagosCierreHTTP`) y solo si Pagos confirma el reparto borra las
+claves del torneo. Si Pagos falla, Redis queda intacto y el cierre se puede
+repetir (Pagos es idempotente). Lo invoca el flujo de fin de carrera (HU2-07).
+Ver [`../../documentation/hu2-12-reparto-botin.md`](../../documentation/hu2-12-reparto-botin.md).
+
 ## Correr y probar
 
 ```bash
