@@ -273,17 +273,16 @@ services:
       - interna
       - datos_pagos
 
-  # Consumidor AMQP de Pagos — misma imagen de pagos, proceso aparte (HU2-18).
-  # Toma las consultas del administrador de RabbitMQ (prefetch 1) y responde.
-  # Comando PLACEHOLDER hasta que exista el consumidor real: por ahora se queda
-  # vivo para ocupar su lugar en la topología. Reemplazar el command por el
-  # arranque real del consumidor (p. ej. python -m app.consumer).
+  # Consumidor AMQP de Pagos — misma imagen de pagos, proceso aparte.
+  # HU2-21 (Guillermo): toma las consultas del administrador de RabbitMQ
+  # (cola admin.consultas, prefetch 1) y responde por reply_to con
+  # correlation_id. Las publica Admin (HU2-18, Iván) cuando exista.
   pagos-consumer:
     build:
       context: ./services/pagos
     container_name: arqui_pagos_consumer
     restart: unless-stopped
-    command: ["python", "-c", "import time; print('pagos-consumer stub T2-04: esperando implementacion HU2-18', flush=True); [time.sleep(3600) for _ in iter(int, 1)]"]
+    command: ["python", "-m", "app.consumer"]
     environment:
       DATABASE_URL: postgresql+psycopg://${PAGOS_DB_USER}:${PAGOS_DB_PASSWORD}@postgres-pagos:5432/${PAGOS_DB_NAME}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}

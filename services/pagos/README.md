@@ -68,6 +68,28 @@ aquí: lo valida el Orquestador con `X-User-Rol`.
   `settle` con 0 tokens: la clave única impide liquidar dos veces.
 - Las apuestas de torneo no pasan por aquí: se pagan en fichas (Redis).
 
+## Consultas del administrador por el Broker (HU2-21)
+
+Pagos corre un **consumidor AMQP aparte** (contenedor `pagos-consumer`,
+`python -m app.consumer`) que responde las consultas de rentabilidad del
+administrador. No es una ruta HTTP: llega por RabbitMQ.
+
+| Elemento | Valor |
+| --- | --- |
+| Cola de consultas | `admin.consultas` (durable), `prefetch = 1` (RF-30) |
+| Respuesta | a la cola `reply_to` del mensaje, con el mismo `correlation_id` |
+| Consulta | `{"tipo":"rentabilidad","filtros":{event_id?,desde?,hasta?,kind?,template?,top_n?}}` |
+| Respuesta | `{"tipo":"rentabilidad","ok":true,"datos":{…}}` o `{"ok":false,"error":"…"}` |
+
+Calcula, por `kind` (estatica/dinamica) y `template`: apuestas, % de acierto,
+apostado, pagado, ganancia neta, multiplicador promedio y mercados generados, más
+el ranking de plantillas con más y menos ganancia. La ganancia se mide sobre las
+apuestas **individuales** (tokens); las de torneo mueven fichas y no cuentan.
+
+Lo publica Admin (HU2-18, Iván) cuando exista; el contrato de colas lo define
+esta HU. Lógica en `app/services/rentabilidad.py` y `app/consumer.py`. Detalle en
+`documentation/hu2-21-rentabilidad.md`.
+
 ## Correr
 
 Con todo el sistema: `docker compose up --build` desde la raíz. Pagos no
