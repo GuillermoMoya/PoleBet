@@ -7,6 +7,7 @@
 //
 //   - GET /health : healthcheck (sin sesion; no consulta a otros servicios)
 //   - GET /billetera, POST /billetera/compras : compra de tokens (HU2-04)
+//   - POST /eventos/{evento_id}/inscripcion : inscripcion al torneo (HU2-06)
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 	"github.com/arquisoft/orquestador/internal/billetera"
 	"github.com/arquisoft/orquestador/internal/config"
 	"github.com/arquisoft/orquestador/internal/health"
+	"github.com/arquisoft/orquestador/internal/inscripcion"
 	"github.com/arquisoft/orquestador/internal/interno"
 	"github.com/arquisoft/orquestador/internal/traza"
 )
@@ -39,7 +41,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	health.Register(mux)
-	billetera.Register(mux, pagos) // HU2-04: GET /billetera, POST /billetera/compras
+	billetera.Register(mux, pagos)   // HU2-04: GET /billetera, POST /billetera/compras
+	inscripcion.Register(mux, pagos) // HU2-06: POST /eventos/{evento_id}/inscripcion
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

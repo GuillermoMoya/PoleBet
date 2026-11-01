@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # ---- Economia del token (RF-05) ----
     cop_per_token: float = 1000.0
 
+    # ---- Torneo multijugador (HU2-06), valores tentativos ----
+    # buy_in, fichas y comision son los valores por defecto al crear un evento
+    # (quedan guardados en events). min_players y min_wager_pct no estan en el
+    # modelo de datos y se leen siempre de aqui.
+    event_buy_in: int = 100  # PoleCoins
+    event_initial_chips: int = 1000  # fichas de juego por inscrito (no son PoleCoins)
+    event_commission_pct: int = 10  # comision de la casa sobre el botin
+    event_min_players: int = 4  # con menos, el torneo se cancela y se devuelve el buy_in
+    event_min_wager_pct: int = 50  # % de fichas que hay que apostar para cobrar (HU2-12)
+
     @field_validator("internal_api_token")
     @classmethod
     def _internal_api_token_required(cls, value: str) -> str:
