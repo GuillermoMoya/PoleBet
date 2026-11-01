@@ -314,6 +314,12 @@ services:
       OBSERVATION_WINDOW_SECONDS: ${OBSERVATION_WINDOW_SECONDS}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       HTTP_PORT: "8080"
+      # HU2-11: parametros del torneo para el ranking y la barra de avance.
+      # Los mismos nombres que usa Pagos (HU2-06); valores por defecto si no
+      # estan en el .env. El motor igual trae defaults internos (1000/10/50).
+      EVENT_INITIAL_CHIPS: ${EVENT_INITIAL_CHIPS:-1000}
+      EVENT_COMMISSION_PCT: ${EVENT_COMMISSION_PCT:-10}
+      EVENT_MIN_WAGER_PCT: ${EVENT_MIN_WAGER_PCT:-50}
     depends_on:
       mongo:
         condition: service_healthy

@@ -28,6 +28,17 @@ type Config struct {
 	// Ciclo del mercado (RF-07, RF-09, RNF-05).
 	VentanaApuestas    time.Duration
 	VentanaObservacion time.Duration
+
+	// HU2-11: Redis guarda las fichas y el ranking del torneo (el motor es su
+	// dueño, RNF-18). RedisURL es opcional: sin ella, el torneo en fichas
+	// queda deshabilitado y el resto del motor funciona igual.
+	RedisURL string
+	// Parametros del torneo que no viven en el modelo de datos sino en
+	// configuracion (acordado con HU2-06): fichas iniciales, comision y el
+	// minimo apostado para ser elegible al reparto.
+	FichasIniciales int64
+	ComisionPct     float64
+	MinApostadoPct  float64
 }
 
 // Cargar lee la configuracion del entorno del proceso.
@@ -75,7 +86,46 @@ func desde(getenv func(string) string) (Config, error) {
 	if cfg.VentanaObservacion, err = segundos(getenv, "OBSERVATION_WINDOW_SECONDS", 60); err != nil {
 		return Config{}, err
 	}
+
+	// HU2-11: configuracion del torneo. Todas opcionales con valores
+	// tentativos del enunciado; se leen aqui para no esparcir numeros magicos.
+	cfg.RedisURL = strings.TrimSpace(getenv("REDIS_URL"))
+	if cfg.FichasIniciales, err = enteroPos(getenv, "EVENT_INITIAL_CHIPS", 1000); err != nil {
+		return Config{}, err
+	}
+	if cfg.ComisionPct, err = porcentaje(getenv, "EVENT_COMMISSION_PCT", 10); err != nil {
+		return Config{}, err
+	}
+	if cfg.MinApostadoPct, err = porcentaje(getenv, "EVENT_MIN_WAGER_PCT", 50); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// enteroPos lee un entero positivo; usa el valor por defecto si no existe.
+func enteroPos(getenv func(string) string, clave string, def int64) (int64, error) {
+	v := strings.TrimSpace(getenv(clave))
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s debe ser un entero positivo, llego %q", clave, v)
+	}
+	return n, nil
+}
+
+// porcentaje lee un numero en [0, 100]; usa el valor por defecto si no existe.
+func porcentaje(getenv func(string) string, clave string, def float64) (float64, error) {
+	v := strings.TrimSpace(getenv(clave))
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil || n < 0 || n > 100 {
+		return 0, fmt.Errorf("%s debe ser un porcentaje entre 0 y 100, llego %q", clave, v)
+	}
+	return n, nil
 }
 
 func opcional(getenv func(string) string, clave, def string) string {

@@ -23,6 +23,7 @@ import (
 	"github.com/arquisoft/motor/internal/apuestas"
 	"github.com/arquisoft/motor/internal/auth"
 	"github.com/arquisoft/motor/internal/config"
+	"github.com/arquisoft/motor/internal/fichas"
 	"github.com/arquisoft/motor/internal/health"
 	"github.com/arquisoft/motor/internal/httpx"
 	"github.com/arquisoft/motor/internal/ingest"
@@ -31,6 +32,8 @@ import (
 	"github.com/arquisoft/motor/internal/mongodb"
 	"github.com/arquisoft/motor/internal/posiciones"
 	"github.com/arquisoft/motor/internal/ws"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -53,6 +56,15 @@ func main() {
 	hub := ws.NuevoHub()
 	go hub.Run(ctx)
 
+	// HU2-11: almacen de fichas y ranking del torneo en Redis. Es opcional:
+	// sin REDIS_URL el motor arranca igual y las apuestas de torneo no se
+	// liquidan (quedan reintentables). Asi una demo sin torneo no necesita
+	// Redis y el resto de HU no se ve afectado.
+	liquidadorTorneo, cerrarRedis := construirTorneo(ctx, cfg, hub)
+	if cerrarRedis != nil {
+		defer cerrarRedis()
+	}
+
 	origenes := httpx.NuevosOrigenes(cfg.OrigenesPermitidos)
 
 	// El JWT lo emite Pagos; el motor solo verifica la firma con el secreto
@@ -69,7 +81,12 @@ func main() {
 	pagos := registrarApuestas(mux, db, cfg, autenticador)  // HU-06
 	registrarMercados(ctx, mux, db, hub, cfg, autenticador) // HU-11
 	// HU-07: el worker liquida los mercados cerrados cuya observacion termino.
+	// HU2-11: si hay almacen de fichas, el worker tambien liquida las apuestas
+	// de torneo en fichas (Redis) y difunde el ranking.
 	worker := liquidacion.NuevoWorker(liquidacion.NuevoMongoStore(db.DB), pagos, hub)
+	if liquidadorTorneo != nil {
+		worker.ConLiquidadorTorneo(liquidadorTorneo)
+	}
 	go worker.Run(ctx)
 
 	// HU-05: la reproduccion de HU-04 avisa al difusor, que mantiene el
@@ -135,6 +152,64 @@ func registrarMercados(ctx context.Context, mux *http.ServeMux, db *mongodb.Cone
 			return s.UserID, ok
 		},
 	)
+}
+
+// construirTorneo arma el almacen de fichas del torneo sobre Redis (HU2-11) y
+// el adaptador que el worker de liquidacion usa para pagar en fichas. Si no
+// hay REDIS_URL devuelve (nil, nil): el motor funciona sin torneo. El segundo
+// valor es una funcion para cerrar la conexion al apagar.
+func construirTorneo(ctx context.Context, cfg config.Config, hub *ws.Hub) (liquidacion.LiquidadorTorneo, func()) {
+	if cfg.RedisURL == "" {
+		log.Println("HU2-11: sin REDIS_URL, el torneo en fichas queda deshabilitado")
+		return nil, nil
+	}
+	opts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Printf("HU2-11: REDIS_URL invalida, torneo deshabilitado: %v", err)
+		return nil, nil
+	}
+	rdb := redis.NewClient(opts)
+	ctxPing, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctxPing).Err(); err != nil {
+		log.Printf("HU2-11: Redis no responde, torneo deshabilitado: %v", err)
+		_ = rdb.Close()
+		return nil, nil
+	}
+	log.Println("HU2-11: conectado a Redis para fichas y ranking del torneo")
+
+	// Las claves del torneo expiran a las 24 h por si el cierre (HU2-12) no
+	// llega a limpiarlas; una carrera dura minutos, asi que no afecta la demo.
+	almacen := fichas.NuevoAlmacen(fichas.NuevoRedisStore(rdb, 24*time.Hour))
+	difusor := fichas.NuevoDifusor(almacen, hub, fichas.ParametrosTorneo{
+		FichasIniciales: cfg.FichasIniciales,
+		MinWagerPct:     cfg.MinApostadoPct,
+	})
+	return adaptadorTorneo{almacen: almacen, difusor: difusor}, func() { _ = rdb.Close() }
+}
+
+// adaptadorTorneo cumple liquidacion.LiquidadorTorneo traduciendo entre el
+// worker y el almacen de fichas (HU2-11). Vive en main porque conecta dos
+// paquetes que no deben conocerse entre si (fichas no importa liquidacion).
+type adaptadorTorneo struct {
+	almacen *fichas.Almacen
+	difusor *fichas.Difusor
+}
+
+func (a adaptadorTorneo) Liquidar(ctx context.Context, eventoID, apuestaID string, gano bool, multiplicador float64) (liquidacion.ResultadoTorneo, error) {
+	res, err := a.almacen.LiquidarYUbicar(ctx, eventoID, apuestaID, gano, multiplicador)
+	if err != nil {
+		return liquidacion.ResultadoTorneo{}, err
+	}
+	return liquidacion.ResultadoTorneo{
+		FichasGanadas: res.FichasGanadas,
+		FichasTotal:   res.FichasTotal,
+		Puesto:        res.Puesto,
+	}, nil
+}
+
+func (a adaptadorTorneo) Difundir(ctx context.Context, eventoID string) {
+	a.difusor.Difundir(ctx, eventoID)
 }
 
 // registrarApuestas arma HU-06 (POST /apuestas, solo jugadores). Devuelve el

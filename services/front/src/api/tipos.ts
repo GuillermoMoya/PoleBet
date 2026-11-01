@@ -19,6 +19,7 @@ export const TIPOS_WS = {
   mercadoCerrado: "mercado_cerrado", // HU-11
   mercadoLiquidado: "mercado_liquidado", // HU-07
   resultadoApuesta: "resultado_apuesta", // HU-08
+  rankingTorneo: "ranking_torneo", // HU2-11
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,38 @@ export interface ResultadoApuesta {
   gano: boolean;
   puntos_obtenidos: number; // 10 + monto x 0,5 si gano; puede tener decimales
   puntaje_total: number; // puntos acumulados del jugador (points_total de Pagos)
+  // HU2-11: solo presentes si la apuesta fue en modo torneo. En ese caso el
+  // front muestra fichas (no puntos) y el nuevo puesto (RF-17).
+  modo?: "torneo";
+  fichas_ganadas?: number; // fichas que pago esta apuesta (0 si perdio)
+  fichas_total?: number; // saldo de fichas del jugador tras liquidar
+  puesto?: number; // puesto del jugador en el ranking tras liquidar
+}
+
+// ---------------------------------------------------------------------------
+// HU2-11: fichas y ranking del torneo
+// ---------------------------------------------------------------------------
+// Payload del mensaje "ranking_torneo": el motor lo difunde a todos cuando
+// cambian las fichas de un torneo (services/motor/internal/fichas). El front
+// lo usa para la tabla del ranking y la barra de avance hacia el minimo
+// apostado (RF-18, RNF-13: cambia en menos de 1 s).
+
+export interface FilaRanking {
+  puesto: number; // los empatados comparten numero y el siguiente grupo sigue (1,1,2)
+  usuario_id: string;
+  fichas: number; // saldo actual de fichas
+  apostado: number; // fichas comprometidas en apuestas (base de la barra)
+  avance_pct: number; // 0..100, apostado frente al minimo para ser elegible
+  elegible: boolean; // ya aposto el minimo para entrar al reparto (HU2-12)
+}
+
+export interface RankingTorneo {
+  evento_id: string;
+  filas: FilaRanking[];
+  min_apostado: number; // fichas que hay que apostar para ser elegible
+  botin: number; // pot del evento (informativo)
+  actualizado_en: string; // ISO: cuando cambio el dato
+  emitido_en?: string; // ISO: cuando el motor lo envio (latencia, RNF-13)
 }
 
 // ---------------------------------------------------------------------------
