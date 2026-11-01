@@ -1,4 +1,4 @@
-// Wrapper de fetch para hablar con Pagos y con el motor.
+// Wrapper de fetch para hablar con el API Gateway, Pagos y el motor.
 //
 //   - Siempre envia la cookie de sesion (credentials: "include").
 //   - Antepone la URL base del servicio.
@@ -7,12 +7,12 @@
 //   - Ante un 401 avisa para limpiar la sesion; ante un 403 avisa para mostrar
 //     "acceso denegado". Quien reacciona es el AuthContext (configurarHttp).
 
-import { MOTOR_URL, PAGOS_URL } from "./config";
+import { API_URL, MOTOR_URL, PAGOS_URL } from "./config";
 import type { ErrorApi } from "./tipos";
 
-export type Servicio = "pagos" | "motor";
+export type Servicio = "api" | "pagos" | "motor";
 
-const BASES: Record<Servicio, string> = { pagos: PAGOS_URL, motor: MOTOR_URL };
+const BASES: Record<Servicio, string> = { api: API_URL, pagos: PAGOS_URL, motor: MOTOR_URL };
 
 const MENSAJES = {
   red: "No se pudo conectar con el servidor. Intenta de nuevo.",

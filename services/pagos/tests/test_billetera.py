@@ -1,7 +1,6 @@
-"""Compra de tokens contra wallets (T2-03).
+"""Logica de la compra de tokens contra wallets (T2-03, HU2-04).
 
-El endpoint de compra es HU2-04 (POST /internal/purchases); aqui se prueba la
-logica del servicio, que ya acredita en wallets y no en users.
+El endpoint POST /internal/purchases se prueba en test_purchases.py.
 """
 import threading
 import uuid
@@ -23,9 +22,13 @@ from app.services.billetera import (
 from tests.conftest import requires_db
 
 
+def _clave(user_id, clave=None):
+    return f"purchase:{user_id}:{clave or uuid.uuid4()}"
+
+
 def _comprar(user_id, monto_cop, clave=None):
     with SessionLocal() as db:
-        return comprar_tokens(db, user_id, monto_cop, clave or str(uuid.uuid4()))
+        return comprar_tokens(db, user_id, monto_cop, _clave(user_id, clave))
 
 
 def _movimientos(user_id):
@@ -121,7 +124,7 @@ def test_dos_compras_simultaneas_con_la_misma_clave_acreditan_una_vez(fabrica):
         try:
             with SessionLocal() as db:
                 barrera.wait()
-                resultados.append(comprar_tokens(db, user_id, 7 * tasa(), clave))
+                resultados.append(comprar_tokens(db, user_id, 7 * tasa(), _clave(user_id, clave)))
         except Exception as error:  # noqa: BLE001  (se revisa abajo)
             errores.append(error)
 

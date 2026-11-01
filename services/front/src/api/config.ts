@@ -11,6 +11,10 @@ const env = import.meta.env;
 export const PAGOS_URL: string = env.VITE_PAGOS_URL || "/api/pagos";
 export const MOTOR_URL: string = env.VITE_MOTOR_URL || "/api/motor";
 
+// Prototipo 2: el REST de los jugadores entra por el API Gateway, que valida
+// la sesion y lo manda al Orquestador (T2-01). Mismo origen que el front.
+export const API_URL = "/api";
+
 // true = mostrar la latencia de los mensajes de posiciones (demo de RNF-04).
 export const MOSTRAR_LATENCIA: boolean = env.VITE_SHOW_LATENCY === "true";
 
