@@ -80,9 +80,9 @@ async function enviarWs(type: string, payload: unknown) {
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  // Pagos solo responde GET /billetera (la carga del saldo).
+  // Solo responde GET /api/billetera (la carga del saldo).
   fetchMock = vi.fn(async (url: string) =>
-    url === "/api/pagos/billetera"
+    url === "/api/billetera"
       ? { ok: true, status: 200, json: async () => ({ saldo: 400, cop_por_token: 100 }) }
       : { ok: false, status: 404, json: async () => ({}) },
   );
@@ -91,7 +91,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const cargasDeSaldo = () => fetchMock.mock.calls.filter(([url]) => url === "/api/pagos/billetera").length;
+const cargasDeSaldo = () => fetchMock.mock.calls.filter(([url]) => url === "/api/billetera").length;
 
 async function abrir() {
   const cliente = new ClienteWs({ url: "ws://prueba/ws", crearSocket: () => new SocketFalso(), esperasMs: [10] });

@@ -37,18 +37,22 @@ igual a `INTERNAL_API_TOKEN` (mínimo 32 caracteres; sin él el servicio no
 arranca). Sin token o con uno distinto: 401. El rol del jugador no se valida
 aquí: lo valida el Orquestador con `X-User-Rol`.
 
-## Billetera (T2-03)
+## Billetera (T2-03, HU2-04)
 
 | Endpoint | Qué hace | Respuestas |
 | --- | --- | --- |
 | `POST /internal/wallets` | Body `{"user_id"}` + `Idempotency-Key: wallet:{user_id}`. Crea la billetera con saldo 0 (registro, HU2-01) | 201 `{user_id, balance, cop_por_token}` · 200 ya existía (no la toca) · 400 clave distinta de `wallet:{user_id}` |
 | `GET /internal/wallets/{user_id}` | Saldo y tasa | 200 `{user_id, balance, cop_por_token}` · 404 sin billetera |
+| `POST /internal/purchases` | Body `{"user_id", "monto_cop"}` + `Idempotency-Key: purchase:{user_id}:{clave}`. Pago simulado (siempre aprobado), convierte con `COP_PER_TOKEN` y acredita (HU2-04) | 201 `{compra_id, tokens_acreditados, saldo, creada_en}` · 200 reenvío de la misma clave (no acredita de nuevo) · 400 clave que no es `purchase:{user_id}:…` · 404 sin billetera · 409 misma clave con otro monto · 422 monto ≤ 0, no múltiplo de la tasa o mayor a $10.000.000 |
 
 - La llave primaria `wallets.user_id` hace la creación idempotente, aunque
   lleguen dos peticiones a la vez (`INSERT … ON CONFLICT DO NOTHING`).
 - `user_id` no es llave foránea: `users` está en otra base.
-- La lógica de compra (`comprar_tokens` en `app/services/billetera.py`) ya
-  acredita en `wallets`; su endpoint `POST /internal/purchases` es HU2-04.
+- La compra guarda la clave tal cual en `ledger_entries.idempotency_key`
+  (única). Lleva el `user_id` para que dos jugadores con la misma clave no
+  choquen; la arma el Orquestador.
+- Ledger y saldo en una sola transacción; el saldo se suma con
+  `balance = balance + x` en un solo `UPDATE`.
 
 ## Apuestas individuales (Motor → Pagos)
 
