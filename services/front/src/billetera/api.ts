@@ -1,10 +1,11 @@
-// Llamadas REST de la billetera contra Pagos (HU-03).
+// Llamadas REST de la billetera (HU2-04). Pasan por el Gateway al Orquestador,
+// que las lleva a Pagos (documentation/orquestador-api.md, §3.3).
 //
-//   GET  /billetera          -> { saldo, cop_por_token }
-//   POST /billetera/compras  { monto_cop } + header Idempotency-Key
-//                            -> 201 compra nueva | 200 reenvio de la misma clave
+//   GET  /api/billetera          -> { saldo, cop_por_token }
+//   POST /api/billetera/compras  { monto_cop } + header Idempotency-Key
+//                                -> 201 compra nueva | 200 reenvio de la misma clave
 //
-// Pagos rechaza con 422 (monto invalido), 409 (clave usada con otro monto) y
+// Se rechaza con 422 (monto invalido), 409 (clave usada con otro monto) y
 // 403 (el admin no compra). http.ts trae el mensaje en español en ErrorHttp.
 
 import { http } from "../api/http";
@@ -25,13 +26,13 @@ export interface Compra {
 export const MONTO_MAXIMO_COP = 10_000_000;
 
 export function obtenerBilletera(signal?: AbortSignal): Promise<Billetera> {
-  return http.get<Billetera>("pagos", "/billetera", { signal });
+  return http.get<Billetera>("api", "/billetera", { signal });
 }
 
 // `clave` identifica el intento de compra: si se reenvia la misma (reintento
-// tras un fallo de red), Pagos no acredita dos veces (RNF-02).
+// tras un fallo de red), Pagos no acredita dos veces (RNF-12).
 export function comprarTokens(montoCop: number, clave: string): Promise<Compra> {
-  return http.post<Compra>("pagos", "/billetera/compras", { monto_cop: montoCop }, { headers: { "Idempotency-Key": clave } });
+  return http.post<Compra>("api", "/billetera/compras", { monto_cop: montoCop }, { headers: { "Idempotency-Key": clave } });
 }
 
 const numero = new Intl.NumberFormat("es-CO");

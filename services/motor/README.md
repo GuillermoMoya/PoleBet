@@ -63,8 +63,14 @@ Dentro del handler, `sesion, _ := auth.SesionDe(r.Context())` entrega `sesion.Us
 | `HTTP_PORT` | no (8080) | `8080` |
 | `BETTING_WINDOW_SECONDS` | no (30) | `30` |
 | `OBSERVATION_WINDOW_SECONDS` | no (60) | `60` |
+| `REDIS_URL` | no (torneo off) | `redis://redis:6379/0` |
+| `EVENT_INITIAL_CHIPS` | no (1000) | `1000` |
+| `EVENT_COMMISSION_PCT` | no (10) | `10` |
+| `EVENT_MIN_WAGER_PCT` | no (50) | `50` |
 
-Si falta una obligatoria, el motor no arranca y el log dice cuál falta.
+Si falta una obligatoria, el motor no arranca y el log dice cuál falta. Sin
+`REDIS_URL` el motor arranca igual, pero las apuestas de torneo no se liquidan
+en fichas (quedan reintentables): el torneo (HU2-11) necesita Redis.
 
 ## Liquidación HU-07
 
@@ -106,7 +112,8 @@ El front decide qué hacer según `type`. Los tipos están en `internal/ws/mensa
 | `mercado_abierto` | todos | HU-11 | el administrador abre un mercado |
 | `mercado_cerrado` | todos | HU-11 | termina la ventana de apuestas (empieza la observación) |
 | `mercado_liquidado` | todos | HU-07 | el mercado se resolvió |
-| `resultado_apuesta` | solo al usuario | HU-08 | se liquidó la apuesta de ese usuario |
+| `resultado_apuesta` | solo al usuario | HU-08 / HU2-11 | se liquidó la apuesta de ese usuario (puntos en individual, fichas en torneo) |
+| `ranking_torneo` | todos | HU2-11 | cambiaron las fichas de un torneo (tras liquidar sus apuestas) |
 
 Desde Go:
 
@@ -242,6 +249,82 @@ No hay `vuelta`, porque OpenF1 `/position` no la trae. Si dos pilotos tienen un 
 El mensaje `evento_carrera` (cada evento suelto de la reproducción) **ya no se difunde**: nadie lo usaba y duplicaba el tráfico del WebSocket.
 
 **Después de actualizar a esta versión, vuelve a correr la ingesta** (`POST /ingest/openf1`, README de la raíz): `team_colour` se agregó con HU-05 y las carreras ingeridas antes no lo tienen (la tabla sale sin colores). La ingesta es idempotente. Hazlo antes de lanzar la reproducción, nunca con una en curso.
+
+## Fichas y ranking del torneo (HU2-11)
+
+Las **fichas** del torneo son distintas de los tokens: se reparten al inscribirse
+(1000 por jugador), solo sirven dentro del evento y **viven en Redis**, del que
+el motor es el único dueño (RNF-18). En PostgreSQL de Pagos solo queda el
+resultado final (`chips_final`), que escribe el cierre del evento (HU2-12).
+
+El paquete `internal/fichas` es el almacén de fichas y el ranking:
+
+- **Inicializar** (`Almacen.InicializarTorneo`): al largar el torneo, le da a
+  cada jugador sus fichas iniciales. Lo alimenta la largada de Pagos
+  (`POST /internal/events/{id}/start`, HU2-06), que devuelve la lista de
+  inscritos. Es idempotente: repetir la largada no reinicia a nadie.
+- **Reservar** (`Almacen.ReservarApuesta`): al apostar en modo torneo (HU2-09)
+  se descuentan las fichas. No se restan «a mano»: se guarda la reserva por
+  apuesta y se recalcula el total, así un reintento con la misma apuesta no
+  descuenta dos veces (RNF-12). Quien llega a 0 fichas no puede apostar.
+- **Liquidar** (`Almacen.Liquidar`): al resolver el mercado, una apuesta de
+  torneo ganadora recibe `monto × multiplicador` en fichas y una perdedora
+  nada. El resultado se escribe una sola vez por apuesta y el total se
+  recalcula: repetir la liquidación no paga doble.
+
+**Regla de oro de idempotencia:** las fichas nunca se suman con `INCRBY`. Cada
+apuesta escribe su resultado una vez (clave por apuesta) y el saldo del jugador
+se **recalcula** desde su saldo inicial, sus reservas y los resultados escritos.
+Así el componente es seguro ante reintentos, reinicios del motor y dobles
+entregas del WebSocket.
+
+El worker de liquidación (HU-07) decide por el `modo` de cada contexto de
+apuesta: `individual` va a Pagos en tokens (como siempre); `torneo` va al
+almacén de fichas y no toca Pagos. Si no hay `REDIS_URL`, una apuesta de torneo
+queda reintentable (nunca se liquida un torneo en tokens).
+
+Al cambiar las fichas de un torneo, el motor difunde el **ranking** por
+WebSocket (RF-18, cambio en pantalla en < 1 s, RNF-13):
+
+```json
+{
+  "type": "ranking_torneo",
+  "payload": {
+    "evento_id": "b3f1…",
+    "min_apostado": 500,
+    "botin": 400,
+    "actualizado_en": "2026-10-31T15:10:00.123Z",
+    "emitido_en": "2026-10-31T15:10:00.124Z",
+    "filas": [
+      { "puesto": 1, "usuario_id": "u2", "fichas": 1450, "apostado": 600, "avance_pct": 100, "elegible": true },
+      { "puesto": 2, "usuario_id": "u1", "fichas": 700, "apostado": 300, "avance_pct": 60, "elegible": false }
+    ]
+  }
+}
+```
+
+| Campo | Qué es |
+| --- | --- |
+| `puesto` | lo comparten los empatados y el siguiente grupo toma el puesto que sigue (p. ej. `1,1,2`), igual que el reparto del botín (HU2-12) |
+| `fichas` | saldo actual de fichas del jugador |
+| `apostado` | fichas comprometidas en apuestas; no baja aunque la apuesta pierda |
+| `avance_pct` | `apostado` frente al mínimo para ser elegible (0..100, topado en 100) |
+| `elegible` | ya apostó el mínimo (`EVENT_MIN_WAGER_PCT` de las fichas iniciales) para entrar al reparto |
+| `min_apostado` | fichas que hay que apostar para ser elegible (techo del porcentaje) |
+
+Cuando la apuesta liquidada fue de torneo, `resultado_apuesta` (que llega solo
+al dueño, HU-08) trae además `modo: "torneo"`, `fichas_ganadas`, `fichas_total`
+y `puesto` en lugar de puntos (RF-17).
+
+Detalle completo, claves de Redis y decisiones en
+[`../../documentation/hu2-11-fichas-ranking.md`](../../documentation/hu2-11-fichas-ranking.md).
+
+**Cierre del torneo (HU2-12).** `Almacen.CerrarTorneo(evento, pagos)` lee las
+fichas finales de Redis, las envía a Pagos (`POST /internal/events/{id}/close`,
+cliente `fichas.PagosCierreHTTP`) y solo si Pagos confirma el reparto borra las
+claves del torneo. Si Pagos falla, Redis queda intacto y el cierre se puede
+repetir (Pagos es idempotente). Lo invoca el flujo de fin de carrera (HU2-07).
+Ver [`../../documentation/hu2-12-reparto-botin.md`](../../documentation/hu2-12-reparto-botin.md).
 
 ## Correr y probar
 

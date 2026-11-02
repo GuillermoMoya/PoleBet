@@ -16,4 +16,5 @@ const (
 	TipoMercadoCerrado   = "mercado_cerrado"   // difusion (HU-11)
 	TipoMercadoLiquidado = "mercado_liquidado" // difusion (HU-07)
 	TipoResultadoApuesta = "resultado_apuesta" // a un usuario (HU-08)
+	TipoRankingTorneo    = "ranking_torneo"    // difusion (HU2-11)
 )

@@ -37,18 +37,22 @@ igual a `INTERNAL_API_TOKEN` (mínimo 32 caracteres; sin él el servicio no
 arranca). Sin token o con uno distinto: 401. El rol del jugador no se valida
 aquí: lo valida el Orquestador con `X-User-Rol`.
 
-## Billetera (T2-03)
+## Billetera (T2-03, HU2-04)
 
 | Endpoint | Qué hace | Respuestas |
 | --- | --- | --- |
 | `POST /internal/wallets` | Body `{"user_id"}` + `Idempotency-Key: wallet:{user_id}`. Crea la billetera con saldo 0 (registro, HU2-01) | 201 `{user_id, balance, cop_por_token}` · 200 ya existía (no la toca) · 400 clave distinta de `wallet:{user_id}` |
 | `GET /internal/wallets/{user_id}` | Saldo y tasa | 200 `{user_id, balance, cop_por_token}` · 404 sin billetera |
+| `POST /internal/purchases` | Body `{"user_id", "monto_cop"}` + `Idempotency-Key: purchase:{user_id}:{clave}`. Pago simulado (siempre aprobado), convierte con `COP_PER_TOKEN` y acredita (HU2-04) | 201 `{compra_id, tokens_acreditados, saldo, creada_en}` · 200 reenvío de la misma clave (no acredita de nuevo) · 400 clave que no es `purchase:{user_id}:…` · 404 sin billetera · 409 misma clave con otro monto · 422 monto ≤ 0, no múltiplo de la tasa o mayor a $10.000.000 |
 
 - La llave primaria `wallets.user_id` hace la creación idempotente, aunque
   lleguen dos peticiones a la vez (`INSERT … ON CONFLICT DO NOTHING`).
 - `user_id` no es llave foránea: `users` está en otra base.
-- La lógica de compra (`comprar_tokens` en `app/services/billetera.py`) ya
-  acredita en `wallets`; su endpoint `POST /internal/purchases` es HU2-04.
+- La compra guarda la clave tal cual en `ledger_entries.idempotency_key`
+  (única). Lleva el `user_id` para que dos jugadores con la misma clave no
+  choquen; la arma el Orquestador.
+- Ledger y saldo en una sola transacción; el saldo se suma con
+  `balance = balance + x` en un solo `UPDATE`.
 
 ## Apuestas individuales (Motor → Pagos)
 
@@ -89,6 +93,30 @@ apuestas **individuales** (tokens); las de torneo mueven fichas y no cuentan.
 Lo publica Admin (HU2-18, Iván) cuando exista; el contrato de colas lo define
 esta HU. Lógica en `app/services/rentabilidad.py` y `app/consumer.py`. Detalle en
 `documentation/hu2-21-rentabilidad.md`.
+
+## Cierre del evento y reparto del botín (HU2-12, Motor → Pagos)
+
+| Endpoint | Entrada | Respuestas |
+| --- | --- | --- |
+| `POST /internal/events/{event_id}/close` | `{"players": [{user_id, chips_final, chips_wagered}]}` + `Idempotency-Key: event-close:{event_id}` | 201 `{event_id, status, tournament_status, pot, commission, prizes_total, residue, players[], nueva}` · 200 ya estaba cerrado (devuelve lo guardado, no paga) · 400 clave inválida · 404 evento inexistente o ganador sin billetera · 409 evento sin largar, jugadores que no coinciden con los inscritos o reparto previo con otras fichas |
+
+- El Motor manda las fichas finales de **todos** los inscritos (viven en
+  Redis, HU2-11). Pagos calcula y paga en una sola transacción, con la fila
+  del evento bloqueada (`FOR UPDATE`).
+- Comisión = piso(`pot × commission_pct / 100`). El resto se reparte
+  50 / 30 / 20 % entre los 3 primeros puestos **elegibles** (apostaron al menos
+  `EVENT_MIN_WAGER_PCT` de las fichas iniciales, redondeado hacia arriba).
+- Empates: el grupo ocupa un solo puesto y divide su porcentaje; el siguiente
+  grupo toma el puesto que sigue (1,1,2). Cada premio se trunca a tokens
+  enteros; truncamientos y puestos sin elegibles son el `residue` (casa).
+  Siempre `prizes_total + commission + residue == pot` (RNF-11).
+- Escribe en `event_entries` `chips_final`, `chips_wagered`, `position_final`
+  (puesto entre todos los inscritos), `eligible` y `prize`; acredita `wallets`
+  y anota `prize` en el ledger (`event-prize:{evento}:{usuario}`). Deja
+  `status = finalizado` y `tournament_status = repartido`.
+- Torneo cancelado en la largada: con `players: []` solo finaliza la carrera.
+- Lógica en `app/services/reparto.py` (`calcular_reparto` es una función pura).
+  Detalle en `documentation/hu2-12-reparto-botin.md`.
 
 ## Correr
 

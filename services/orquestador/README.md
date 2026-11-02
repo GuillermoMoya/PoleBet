@@ -11,6 +11,7 @@ main.go           # solo arma las piezas, arranca el servidor y lo apaga limpio 
 internal/config   # variables de entorno (las obligatorias no tienen valor por defecto)
 internal/httpx    # EscribirJSON
 internal/health   # GET /health
+internal/billetera # GET /billetera, POST /billetera/compras (HU2-04)
 internal/errores  # formato {error, codigo} y la tabla de errores del contrato
 internal/sesion   # middleware: X-User-Id y X-User-Rol del Gateway → 401 / 403
 internal/traza    # X-Request-Id de cada petición
