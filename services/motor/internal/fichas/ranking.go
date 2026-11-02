@@ -65,7 +65,9 @@ func ConstruirRanking(eventoID string, estados []Estado, fichasIniciales int64, 
 			UsuarioID: e.UsuarioID,
 			Fichas:    e.Fichas,
 			Apostado:  e.Apostado,
-			Elegible:  minApostado > 0 && e.Apostado >= minApostado,
+			// Misma regla que el reparto de Pagos (HU2-12): con minimo 0
+			// (EVENT_MIN_WAGER_PCT=0) todos son elegibles.
+			Elegible: e.Apostado >= minApostado,
 		}
 		fila.AvancePct = avance(e.Apostado, minApostado)
 		filas = append(filas, fila)
@@ -104,10 +106,8 @@ func ConstruirRanking(eventoID string, estados []Estado, fichasIniciales int64, 
 // avance expresa el apostado como porcentaje del minimo (0..100). Al llegar o
 // superar el minimo se topa en 100: la barra del front no pasa de ahi.
 func avance(apostado, minApostado int64) float64 {
-	if minApostado <= 0 {
-		return 0
-	}
-	if apostado >= minApostado {
+	if minApostado <= 0 || apostado >= minApostado {
+		// Sin minimo (0 %) o ya alcanzado: la barra esta completa.
 		return 100
 	}
 	return float64(apostado) / float64(minApostado) * 100.0

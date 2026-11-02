@@ -72,6 +72,30 @@ aquí: lo valida el Orquestador con `X-User-Rol`.
   `settle` con 0 tokens: la clave única impide liquidar dos veces.
 - Las apuestas de torneo no pasan por aquí: se pagan en fichas (Redis).
 
+## Cierre del evento y reparto del botín (HU2-12, Motor → Pagos)
+
+| Endpoint | Entrada | Respuestas |
+| --- | --- | --- |
+| `POST /internal/events/{event_id}/close` | `{"players": [{user_id, chips_final, chips_wagered}]}` + `Idempotency-Key: event-close:{event_id}` | 201 `{event_id, status, tournament_status, pot, commission, prizes_total, residue, players[], nueva}` · 200 ya estaba cerrado (devuelve lo guardado, no paga) · 400 clave inválida · 404 evento inexistente o ganador sin billetera · 409 evento sin largar, jugadores que no coinciden con los inscritos o reparto previo con otras fichas |
+
+- El Motor manda las fichas finales de **todos** los inscritos (viven en
+  Redis, HU2-11). Pagos calcula y paga en una sola transacción, con la fila
+  del evento bloqueada (`FOR UPDATE`).
+- Comisión = piso(`pot × commission_pct / 100`). El resto se reparte
+  50 / 30 / 20 % entre los 3 primeros puestos **elegibles** (apostaron al menos
+  `EVENT_MIN_WAGER_PCT` de las fichas iniciales, redondeado hacia arriba).
+- Empates: el grupo ocupa un solo puesto y divide su porcentaje; el siguiente
+  grupo toma el puesto que sigue (1,1,2). Cada premio se trunca a tokens
+  enteros; truncamientos y puestos sin elegibles son el `residue` (casa).
+  Siempre `prizes_total + commission + residue == pot` (RNF-11).
+- Escribe en `event_entries` `chips_final`, `chips_wagered`, `position_final`
+  (puesto entre todos los inscritos), `eligible` y `prize`; acredita `wallets`
+  y anota `prize` en el ledger (`event-prize:{evento}:{usuario}`). Deja
+  `status = finalizado` y `tournament_status = repartido`.
+- Torneo cancelado en la largada: con `players: []` solo finaliza la carrera.
+- Lógica en `app/services/reparto.py` (`calcular_reparto` es una función pura).
+  Detalle en `documentation/hu2-12-reparto-botin.md`.
+
 ## Correr
 
 Con todo el sistema: `docker compose up --build` desde la raíz. Pagos no
